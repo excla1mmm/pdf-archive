@@ -167,6 +167,13 @@ def normalize_classification(config: AppConfig, raw: dict[str, Any]) -> dict[str
         result["confidence"] = min(result["confidence"], 0.45)
         result["reasoning"] = (result["reasoning"] + " Invalid fixed category id normalized.").strip()
 
+    if result["category_source"] == "ai_created" and result["category_id"] in config.categories_by_id:
+        category = config.categories_by_id[result["category_id"]]
+        result["category_source"] = "fixed"
+        result["category_name"] = category.name
+        result["new_category_suggestion"] = ""
+        result["reasoning"] = (result["reasoning"] + " Existing fixed category id normalized.").strip()
+
     if result["category_source"] == "ai_created" and not config.llm.allow_ai_categories:
         result["category_source"] = "fixed"
         result["category_id"] = "other" if "other" in config.categories_by_id else config.categories[-1].id

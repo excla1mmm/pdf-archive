@@ -79,6 +79,7 @@ def process_pdf(config: AppConfig, pdf_path: Path, dry_run: bool = False, no_llm
     )
     warnings.extend(text_warnings)
     date_candidates = find_date_candidates(text)
+    has_enough_text_for_llm = len(text.strip()) >= config.min_text_chars_before_ocr
 
     llm_info: dict[str, Any] = {
         "provider": config.llm.provider,
@@ -86,7 +87,11 @@ def process_pdf(config: AppConfig, pdf_path: Path, dry_run: bool = False, no_llm
         "used": False,
         "error": "",
     }
-    if config.llm.enabled and not no_llm:
+    if not has_enough_text_for_llm:
+        raw_classification = insufficient_text_classification(config, pdf_path, date_candidates)
+        llm_info["error"] = "LLM skipped because extracted text is too short."
+        warnings.append("LLM skipped because extracted text is too short for reliable classification.")
+    elif config.llm.enabled and not no_llm:
         try:
             raw_classification = classify_with_ollama(config, text, primary_barcode, date_candidates)
             llm_info["used"] = True
@@ -187,6 +192,22 @@ def process_pdf(config: AppConfig, pdf_path: Path, dry_run: bool = False, no_llm
     status = "review" if review_required else "archived"
     logging.info("%s -> %s", status.upper(), target_pdf)
     return ProcessResult(pdf_path, target_pdf, status, review_required, "Processed successfully.")
+
+
+def insufficient_text_classification(config: AppConfig, pdf_path: Path, date_candidates: list[str]) -> dict[str, Any]:
+    category = config.categories_by_id.get("other", config.categories[-1])
+    return {
+        "document_date": date_candidates[0] if date_candidates else "",
+        "category_id": category.id,
+        "category_name": category.name,
+        "category_source": "fixed",
+        "new_category_suggestion": "",
+        "sender": "",
+        "title": "Insufficient extracted text",
+        "short_filename_title": pdf_path.stem,
+        "confidence": 0.0,
+        "reasoning": "The extracted text is too short for reliable classification; document requires review.",
+    }
 
 
 def resolve_category(config: AppConfig, classification: dict[str, Any]) -> tuple[str, dict[str, Any]]:
