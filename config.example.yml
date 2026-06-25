@@ -1,0 +1,139 @@
+settings:
+  input_dir: Input
+  archive_dir: Archive
+  review_folder: _Review
+  ai_new_folder: _AI_New
+  unknown_year_folder: UnknownYear
+  create_xml: true
+  include_extracted_text: false
+  recursive_input: false
+  delete_source_after_success: true
+  confidence_review_threshold: 0.75
+  min_text_chars_before_ocr: 80
+  max_pages_for_text: 6
+  max_chars_for_llm: 14000
+
+barcode:
+  # Relative crop of the first page. Good starting point for "barcode in top right".
+  left_ratio: 0.56
+  top_ratio: 0.00
+  width_ratio: 0.44
+  height_ratio: 0.30
+  dpi_crop: 350
+  dpi_full_page_fallback: 220
+
+ocr:
+  enabled: true
+  languages: deu+eng
+  dpi: 260
+
+llm:
+  enabled: true
+  provider: ollama
+  base_url: http://localhost:11434
+  model: gemma3:4b
+  temperature: 0.1
+  timeout_seconds: 180
+  allow_ai_categories: true
+
+categories:
+  - id: invoice
+    name: Rechnung / Счета
+    folder: Rechnung
+    description: Invoices, payment requests, bills, receipts with payment obligation.
+    keywords: [rechnung, invoice, zahlbetrag, faellig, mwst, ust, betrag]
+  - id: bank_statement
+    name: Kontoauszug / Банковские выписки
+    folder: Kontoauszug
+    description: Bank statements, account movements, credit card statements.
+    keywords: [kontoauszug, kontostand, iban, bic, umsatz, bank]
+  - id: tax
+    name: Steuer / Налоги
+    folder: Steuer
+    description: Tax office, tax returns, tax notices, VAT and income tax documents.
+    keywords: [steuer, finanzamt, einkommensteuer, umsatzsteuer, bescheid]
+  - id: insurance
+    name: Versicherung / Страхование
+    folder: Versicherung
+    description: Insurance policies, claims, premium notices.
+    keywords: [versicherung, police, beitrag, schaden, haftpflicht]
+  - id: salary
+    name: Gehalt / Зарплата
+    folder: Gehalt
+    description: Payslips and salary related documents.
+    keywords: [gehalt, lohn, abrechnung, entgelt, brutto, netto]
+  - id: pension
+    name: Rente / Пенсия
+    folder: Rente
+    description: Pension and retirement documents.
+    keywords: [rente, rentenversicherung, pension]
+  - id: real_estate
+    name: Immobilien / Недвижимость
+    folder: Immobilien
+    description: Rent, property, lease, ownership and housing documents.
+    keywords: [miete, mietvertrag, immobilie, grundsteuer, wohnung]
+  - id: health_insurance
+    name: Krankenkasse / Медицинская страховка
+    folder: Krankenkasse
+    description: Health insurance letters and statements.
+    keywords: [krankenkasse, krankenversicherung, versichertenkarte]
+  - id: medical
+    name: Arzt / Медицина
+    folder: Arzt
+    description: Doctor letters, lab reports, prescriptions, medical invoices.
+    keywords: [arzt, praxis, diagnose, labor, rezept, behandlung]
+  - id: government
+    name: Behoerde / Госорганы
+    folder: Behoerde
+    description: Government authorities, municipalities, official notices.
+    keywords: [behoerde, amt, stadt, gemeinde, bescheid, antrag]
+  - id: legal
+    name: Gericht_Anwalt / Суд и адвокат
+    folder: Gericht_Anwalt
+    description: Court, lawyer, legal disputes and legal notices.
+    keywords: [gericht, anwalt, kanzlei, klage, frist, aktenzeichen]
+  - id: contract
+    name: Vertrag / Договоры
+    folder: Vertrag
+    description: Contracts, agreements, subscriptions.
+    keywords: [vertrag, vereinbarung, kuendigung, laufzeit, agb]
+  - id: car
+    name: Auto / Автомобиль
+    folder: Auto
+    description: Vehicle, repair, registration, insurance and leasing.
+    keywords: [auto, fahrzeug, kfz, werkstatt, reifen, leasing]
+  - id: energy
+    name: Energie / Электричество, газ, вода
+    folder: Energie
+    description: Electricity, gas, water, utilities and municipal services.
+    keywords: [strom, gas, wasser, energie, stadtwerke, zaehler]
+  - id: telecom
+    name: Telekom / Интернет и телефон
+    folder: Telekom
+    description: Internet, mobile, phone and communication providers.
+    keywords: [telefon, internet, mobilfunk, telekom, vodafone, o2]
+  - id: shopping
+    name: Bestellung_Lieferung / Покупки и доставка
+    folder: Bestellung_Lieferung
+    description: Orders, delivery notes, returns, online purchases.
+    keywords: [bestellung, lieferung, retour, amazon, ebay, paket]
+  - id: warranty
+    name: Garantie / Гарантия
+    folder: Garantie
+    description: Warranty, repair proof, product guarantee.
+    keywords: [garantie, gewaehrleistung, reparatur, seriennummer]
+  - id: travel
+    name: Reise / Путешествия
+    folder: Reise
+    description: Travel bookings, hotels, flights, tickets.
+    keywords: [reise, hotel, flug, ticket, buchung, boarding]
+  - id: education
+    name: Bildung / Образование
+    folder: Bildung
+    description: School, university, courses, certificates.
+    keywords: [schule, universitaet, kurs, zertifikat, bescheinigung]
+  - id: other
+    name: Sonstiges / Прочее
+    folder: Sonstiges
+    description: Documents that do not fit another fixed category.
+    keywords: [sonstiges, allgemein]
