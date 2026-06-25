@@ -1,18 +1,20 @@
-# PDF Archive MVP для Windows
+# PDF Archive MVP für Windows
 
-Локальный MVP для автоматической обработки PDF:
+Lokaler MVP zur automatischen Verarbeitung und Archivierung von PDF-Dokumenten.
 
-- распознает штрихкод в правом верхнем углу первой страницы;
-- извлекает текст из PDF или делает OCR через Tesseract;
-- классифицирует документ локальной LLM через Ollama;
-- записывает штрихкод и другие поля в PDF metadata;
-- раскладывает PDF по папкам `Archive/ГОД/Категория`;
-- создает рядом `.json` и, по умолчанию, `.xml`;
-- отправляет сомнительные документы в `_Review`.
+Der Workflow:
 
-## Быстрый запуск на Windows
+- erkennt Barcodes im rechten oberen Bereich der ersten PDF-Seite;
+- extrahiert vorhandenen PDF-Text oder nutzt OCR über Tesseract;
+- klassifiziert Dokumente mit einem lokalen LLM über Ollama;
+- schreibt Barcode und weitere Felder in die PDF-Metadaten;
+- legt Dokumente unter `Archive/JAHR/Kategorie` ab;
+- erzeugt zu jeder PDF eine `.json`-Datei und optional eine `.xml`-Datei;
+- verschiebt unsichere Dokumente nach `_Review`.
 
-Установите Python 3.11 или 3.12, затем в PowerShell:
+## Schnellstart unter Windows
+
+Python 3.11 oder 3.12 installieren, dann in PowerShell:
 
 ```powershell
 cd C:\path\to\pdf_archive_mvp
@@ -22,49 +24,51 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Установите Ollama и легкую стартовую модель:
+Ollama installieren und das leichte Startmodell laden:
 
 ```powershell
 ollama pull gemma3:4b
 ```
 
-Если классификация окажется слишком слабой, можно позже подняться до `gemma3:12b`: поменяйте модель в `config.example.yml` и выполните:
+Falls die Klassifikation zu schwach ist, kann später auf `gemma3:12b` gewechselt werden. Dazu in `config.example.yml` das Modell ändern und ausführen:
 
 ```powershell
 ollama pull gemma3:12b
 ```
 
-Для OCR установите Tesseract для Windows, например сборку UB Mannheim, и добавьте `tesseract.exe` в `PATH`. Для немецких и английских документов нужны языки `deu` и `eng`.
+Für OCR wird Tesseract benötigt. Unter Windows eignet sich zum Beispiel der UB-Mannheim-Build. Danach sollte `tesseract.exe` im `PATH` verfügbar sein. Für deutsche und englische Dokumente werden die Sprachpakete `deu` und `eng` benötigt.
 
-## Использование
+## Verwendung
 
-Положите PDF-файлы в папку `Input`, затем сначала проверьте план:
+PDF-Dateien in den Ordner `Input` legen.
+
+Zuerst einen Probelauf ohne Schreiben oder Verschieben ausführen:
 
 ```powershell
 python archive_pdf.py --dry-run
 ```
 
-После проверки запустите реальную обработку:
+Danach die echte Verarbeitung starten:
 
 ```powershell
 python archive_pdf.py
 ```
 
-Без LLM, только keyword fallback:
+Ohne LLM, nur mit Keyword-Fallback:
 
 ```powershell
 python archive_pdf.py --no-llm
 ```
 
-С другими папками:
+Mit eigenen Ordnern:
 
 ```powershell
 python archive_pdf.py --input "D:\Scan\Input" --archive "D:\Dokumente\Archiv"
 ```
 
-## Результат
+## Ergebnis
 
-Пример структуры:
+Beispielstruktur:
 
 ```text
 Archive/
@@ -78,16 +82,16 @@ Archive/
         undated_Rechnung_Dokument.pdf
 ```
 
-Документ попадает в `_Review`, если:
+Ein Dokument landet in `_Review`, wenn:
 
-- не найден штрихкод;
-- не найдена дата;
-- уверенность классификации ниже `confidence_review_threshold`;
-- LLM создала новую категорию.
+- kein Barcode erkannt wurde;
+- kein Dokumentdatum erkannt wurde;
+- die Klassifikationssicherheit unter `confidence_review_threshold` liegt;
+- das LLM eine neue Kategorie vorgeschlagen hat.
 
-## PDF metadata
+## PDF-Metadaten
 
-В PDF записываются поля:
+In die PDF werden folgende Felder geschrieben:
 
 - `Barcode`
 - `ArchiveId`
@@ -96,17 +100,86 @@ Archive/
 - `DocumentCategoryName`
 - `ArchiveProcessedAt`
 
-Главным источником структурированных данных является `.json`; PDF metadata нужны для дополнительной совместимости с поиском и DMS-системами.
+Die `.json`-Datei ist die wichtigste strukturierte Datenquelle. Die PDF-Metadaten dienen vor allem der zusätzlichen Kompatibilität mit Suche, DMS-Systemen oder späteren Importen.
 
-## Настройка категорий
+## JSON- und XML-Sidecars
 
-Фиксированные категории находятся в `config.example.yml` в секции `categories`.
+Zu jedem verarbeiteten Dokument wird eine JSON-Datei erzeugt. Standardmäßig wird zusätzlich XML geschrieben.
 
-LLM получает список категорий и должна выбрать одну из них. Если ничего не подходит и `allow_ai_categories: true`, она может предложить новую категорию. Такие документы специально отправляются в `_Review`, чтобы категориальный справочник не разрастался случайно.
+Die Sidecar-Dateien enthalten unter anderem:
 
-## Практические советы
+- Barcode und erkannte Barcode-Variante;
+- Dokumentdatum;
+- Zielpfad und finaler Dateiname;
+- Kategorie, Kategoriequelle und Review-Status;
+- Absender, Titel und Kurzbeschreibung;
+- LLM-Modell, LLM-Status und Klassifikationsbegründung;
+- OCR- beziehungsweise Textextraktionsinformationen;
+- kurze Textexzerpte.
 
-- Если штрихкод не находится, подстройте блок `barcode` в `config.example.yml`.
-- Если OCR работает медленно, уменьшите `ocr.dpi` или `max_pages_for_text`.
-- Если документы в основном сканированные, держите Tesseract установленным и проверьте `deu+eng`.
-- Если приватность критична, оставьте `include_extracted_text: false`; в JSON будет только короткий фрагмент текста.
+Ob der vollständige extrahierte Text gespeichert wird, steuert `include_extracted_text` in `config.example.yml`.
+
+## Kategorien
+
+Die festen Kategorien stehen in `config.example.yml` im Abschnitt `categories`.
+
+Das LLM erhält diesen Kategorienkatalog und soll möglichst eine feste Kategorie wählen. Wenn keine Kategorie passt und `allow_ai_categories: true` gesetzt ist, darf das LLM eine neue Kategorie vorschlagen. Solche Dokumente werden bewusst nach `_Review` verschoben, damit der Kategorienkatalog nicht unkontrolliert wächst.
+
+## Wichtige Einstellungen
+
+Barcode-Erkennung:
+
+```yaml
+barcode:
+  left_ratio: 0.56
+  top_ratio: 0.00
+  width_ratio: 0.44
+  height_ratio: 0.30
+```
+
+Diese Werte beschreiben den rechten oberen Ausschnitt der ersten Seite. Wenn Barcodes nicht erkannt werden, sollte dieser Bereich angepasst werden.
+
+OCR:
+
+```yaml
+ocr:
+  enabled: true
+  languages: deu+eng
+  dpi: 260
+```
+
+LLM:
+
+```yaml
+llm:
+  enabled: true
+  provider: ollama
+  base_url: http://localhost:11434
+  model: gemma3:4b
+```
+
+## Testen
+
+Für einen sicheren Test sollten synthetische PDFs verwendet werden, nicht echte private Dokumente.
+
+Empfohlene Testfälle:
+
+- Rechnung eines Energieversorgers mit Barcode;
+- Kontoauszug mit Barcode;
+- medizinischer Laborbericht mit Barcode;
+- unklarer Testbrief ohne Barcode.
+
+Erwartung:
+
+- die ersten drei Dokumente werden nach `Archive/JAHR/Kategorie` verschoben;
+- das Dokument ohne Barcode landet in `_Review`;
+- zu jedem Dokument entstehen `.json` und `.xml`;
+- die PDF-Metadaten enthalten `Barcode`, `DocumentDate` und `DocumentCategory`.
+
+## Praktische Hinweise
+
+- Wenn Barcodes nicht gefunden werden, den Block `barcode` in `config.example.yml` anpassen.
+- Wenn OCR zu langsam ist, `ocr.dpi` oder `max_pages_for_text` reduzieren.
+- Wenn Dokumente überwiegend gescannt sind, Tesseract installiert halten und `deu+eng` prüfen.
+- Wenn Datenschutz besonders wichtig ist, `include_extracted_text: false` lassen. Dann wird nur ein kurzer Textauszug gespeichert.
+- Für den ersten Funktionstest ist `--no-llm` nützlich, weil damit Barcode, Datum, Ordnerstruktur, Metadaten und Sidecars unabhängig von Ollama geprüft werden können.
