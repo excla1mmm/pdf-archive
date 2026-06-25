@@ -6,6 +6,7 @@ Der Workflow:
 
 - erkennt Barcodes im rechten oberen Bereich der ersten PDF-Seite;
 - extrahiert vorhandenen PDF-Text oder nutzt OCR über Tesseract;
+- bereitet Scanbilder für OCR vor, inklusive Autokontrast, optionalem Drehen und Deskew;
 - klassifiziert Dokumente mit einem lokalen LLM über Ollama;
 - schreibt Barcode und weitere Felder in die PDF-Metadaten;
 - legt Dokumente unter `Archive/JAHR/Kategorie` ab;
@@ -86,6 +87,7 @@ Ein Dokument landet in `_Review`, wenn:
 
 - kein Barcode erkannt wurde;
 - kein Dokumentdatum erkannt wurde;
+- die erkannte Datumsangabe nicht durch extrahierten Text bestätigt wird;
 - die Klassifikationssicherheit unter `confidence_review_threshold` liegt;
 - das LLM eine neue Kategorie vorgeschlagen hat.
 
@@ -98,6 +100,8 @@ In die PDF werden folgende Felder geschrieben:
 - `DocumentDate`
 - `DocumentCategory`
 - `DocumentCategoryName`
+- `ArchiveReviewRequired`
+- `ArchiveReviewReasons`
 - `ArchiveProcessedAt`
 
 Die `.json`-Datei ist die wichtigste strukturierte Datenquelle. Die PDF-Metadaten dienen vor allem der zusätzlichen Kompatibilität mit Suche, DMS-Systemen oder späteren Importen.
@@ -115,6 +119,8 @@ Die Sidecar-Dateien enthalten unter anderem:
 - Absender, Titel und Kurzbeschreibung;
 - LLM-Modell, LLM-Status und Klassifikationsbegründung;
 - OCR- beziehungsweise Textextraktionsinformationen;
+- OCR-Preprocessing-Schritte pro Seite;
+- Datumsvalidierung und Review-Gründe;
 - kurze Textexzerpte.
 
 Ob der vollständige extrahierte Text gespeichert wird, steuert `include_extracted_text` in `config.example.yml`.
@@ -146,7 +152,17 @@ ocr:
   enabled: true
   languages: deu+eng
   dpi: 260
+  tesseract_config: "--oem 1 --psm 6"
+  preprocess: true
+  auto_rotate: true
+  deskew: true
+  max_deskew_degrees: 4.0
+  contrast: 1.35
+  sharpness: 1.15
+  threshold: null
 ```
+
+`preprocess` aktiviert die Bildvorbereitung für gescannte Dokumente. Dabei werden Seiten in Graustufen umgewandelt, per Autokontrast verbessert, leicht geschärft und optional gedreht beziehungsweise entzerrt. `threshold` sollte nur gesetzt werden, wenn sehr schlechte Scans aggressiv binarisiert werden müssen, zum Beispiel mit einem Wert zwischen `170` und `210`.
 
 LLM:
 
@@ -157,6 +173,17 @@ llm:
   base_url: http://localhost:11434
   model: gemma3:4b
 ```
+
+Datumsvalidierung:
+
+```yaml
+settings:
+  min_document_year: 1990
+  max_future_years: 1
+  require_date_in_text: true
+```
+
+Wenn `require_date_in_text` aktiv ist, wird ein vom LLM vorgeschlagenes Datum nur akzeptiert, wenn es auch im extrahierten Text als Kandidat gefunden wurde. Das reduziert Halluzinationen bei schlechten Scans.
 
 ## Testen
 
@@ -175,11 +202,13 @@ Erwartung:
 - das Dokument ohne Barcode landet in `_Review`;
 - zu jedem Dokument entstehen `.json` und `.xml`;
 - die PDF-Metadaten enthalten `Barcode`, `DocumentDate` und `DocumentCategory`.
+- unsichere Dokumente enthalten im JSON `review_reasons` und `date_validation`.
 
 ## Praktische Hinweise
 
 - Wenn Barcodes nicht gefunden werden, den Block `barcode` in `config.example.yml` anpassen.
 - Wenn OCR zu langsam ist, `ocr.dpi` oder `max_pages_for_text` reduzieren.
 - Wenn Dokumente überwiegend gescannt sind, Tesseract installiert halten und `deu+eng` prüfen.
+- Wenn viele Dokumente in `_Review` landen, zuerst `text_length`, `ocr_pages` und `review_reasons` in den JSON-Dateien prüfen.
 - Wenn Datenschutz besonders wichtig ist, `include_extracted_text: false` lassen. Dann wird nur ein kurzer Textauszug gespeichert.
 - Für den ersten Funktionstest ist `--no-llm` nützlich, weil damit Barcode, Datum, Ordnerstruktur, Metadaten und Sidecars unabhängig von Ollama geprüft werden können.

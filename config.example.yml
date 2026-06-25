@@ -10,6 +10,9 @@ settings:
   delete_source_after_success: true
   confidence_review_threshold: 0.75
   min_text_chars_before_ocr: 80
+  min_document_year: 1990
+  max_future_years: 1
+  require_date_in_text: true
   max_pages_for_text: 6
   max_chars_for_llm: 14000
 
@@ -26,6 +29,15 @@ ocr:
   enabled: true
   languages: deu+eng
   dpi: 260
+  tesseract_config: "--oem 1 --psm 6"
+  preprocess: true
+  auto_rotate: true
+  deskew: true
+  max_deskew_degrees: 4.0
+  contrast: 1.35
+  sharpness: 1.15
+  # Set to null to keep grayscale. Use 170-210 for aggressive binarization.
+  threshold: null
 
 llm:
   enabled: true

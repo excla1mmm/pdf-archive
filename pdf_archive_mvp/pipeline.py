@@ -13,11 +13,11 @@ from .sidecar import write_json, write_xml
 from .utils import (
     find_date_candidates,
     now_iso,
-    parse_iso_date,
     safe_filename_part,
     truncate_text,
     unique_path,
 )
+from .validation import build_review_reasons, choose_document_date
 
 
 @dataclass(frozen=True)
@@ -104,16 +104,20 @@ def process_pdf(config: AppConfig, pdf_path: Path, dry_run: bool = False, no_llm
         llm_info["error"] = "LLM disabled by config or CLI."
 
     classification = normalize_classification(config, raw_classification)
-    document_date = parse_iso_date(classification.get("document_date")) or (date_candidates[0] if date_candidates else None)
+    document_date, date_validation = choose_document_date(config, classification.get("document_date"), date_candidates)
+    warnings.extend(date_validation["warnings"])
     target_year = document_date[:4] if document_date else config.unknown_year_folder
     category_folder, category_payload = resolve_category(config, classification)
 
-    review_required = (
-        classification["confidence"] < config.confidence_review_threshold
-        or not document_date
-        or not primary_barcode
-        or classification["category_source"] == "ai_created"
+    review_reasons = build_review_reasons(
+        config,
+        classification,
+        document_date,
+        primary_barcode,
+        date_validation,
+        has_enough_text_for_llm,
     )
+    review_required = bool(review_reasons)
     if review_required:
         target_dir = config.archive_dir / target_year / config.review_folder / category_folder
     elif classification["category_source"] == "ai_created":
@@ -148,7 +152,9 @@ def process_pdf(config: AppConfig, pdf_path: Path, dry_run: bool = False, no_llm
         "short_filename_title": classification["short_filename_title"],
         "confidence": classification["confidence"],
         "review_required": review_required,
+        "review_reasons": review_reasons,
         "classification_reasoning": classification["reasoning"],
+        "date_validation": date_validation,
         "extraction": {
             **extraction,
             "text_length": len(text),
@@ -175,6 +181,8 @@ def process_pdf(config: AppConfig, pdf_path: Path, dry_run: bool = False, no_llm
             "DocumentDate": document_date or "",
             "DocumentCategory": category_payload["id"],
             "DocumentCategoryName": category_payload["name"],
+            "ArchiveReviewRequired": str(review_required).lower(),
+            "ArchiveReviewReasons": ",".join(review_reasons),
             "ArchiveProcessedAt": processed_at,
         },
     )

@@ -29,6 +29,14 @@ class OcrConfig:
     enabled: bool
     languages: str
     dpi: int
+    tesseract_config: str
+    preprocess: bool
+    auto_rotate: bool
+    deskew: bool
+    max_deskew_degrees: float
+    contrast: float
+    sharpness: float
+    threshold: int | None
 
 
 @dataclass(frozen=True)
@@ -56,6 +64,9 @@ class AppConfig:
     delete_source_after_success: bool
     confidence_review_threshold: float
     min_text_chars_before_ocr: int
+    min_document_year: int
+    max_future_years: int
+    require_date_in_text: bool
     max_pages_for_text: int
     max_chars_for_llm: int
     barcode: BarcodeConfig
@@ -127,6 +138,9 @@ def load_config(path: str | Path, input_override: str | None = None, archive_ove
         delete_source_after_success=bool(settings.get("delete_source_after_success", True)),
         confidence_review_threshold=float(settings.get("confidence_review_threshold", 0.75)),
         min_text_chars_before_ocr=int(settings.get("min_text_chars_before_ocr", 80)),
+        min_document_year=int(settings.get("min_document_year", 1990)),
+        max_future_years=int(settings.get("max_future_years", 1)),
+        require_date_in_text=bool(settings.get("require_date_in_text", True)),
         max_pages_for_text=int(settings.get("max_pages_for_text", 6)),
         max_chars_for_llm=int(settings.get("max_chars_for_llm", 14000)),
         barcode=BarcodeConfig(
@@ -141,12 +155,20 @@ def load_config(path: str | Path, input_override: str | None = None, archive_ove
             enabled=bool(ocr.get("enabled", True)),
             languages=str(ocr.get("languages", "deu+eng")),
             dpi=int(ocr.get("dpi", 260)),
+            tesseract_config=str(ocr.get("tesseract_config", "--oem 1 --psm 6")),
+            preprocess=bool(ocr.get("preprocess", True)),
+            auto_rotate=bool(ocr.get("auto_rotate", True)),
+            deskew=bool(ocr.get("deskew", True)),
+            max_deskew_degrees=float(ocr.get("max_deskew_degrees", 4.0)),
+            contrast=float(ocr.get("contrast", 1.35)),
+            sharpness=float(ocr.get("sharpness", 1.15)),
+            threshold=int(ocr["threshold"]) if ocr.get("threshold") is not None else None,
         ),
         llm=LlmConfig(
             enabled=bool(llm.get("enabled", True)),
             provider=str(llm.get("provider", "ollama")),
             base_url=str(llm.get("base_url", "http://localhost:11434")).rstrip("/"),
-            model=str(llm.get("model", "gemma3:12b")),
+            model=str(llm.get("model", "gemma3:4b")),
             temperature=float(llm.get("temperature", 0.1)),
             timeout_seconds=int(llm.get("timeout_seconds", 180)),
             allow_ai_categories=bool(llm.get("allow_ai_categories", True)),

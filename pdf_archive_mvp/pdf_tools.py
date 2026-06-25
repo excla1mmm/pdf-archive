@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,15 @@ def _pixmap_to_image(pix: Any):
 
     mode = "RGB" if pix.alpha == 0 else "RGBA"
     return Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+
+
+def _pil_resampling() -> Any:
+    try:
+        from PIL import Image
+
+        return Image.Resampling.LANCZOS
+    except AttributeError:
+        return 1
 
 
 def render_first_page_crop(pdf_path: Path, barcode: BarcodeConfig):
@@ -103,10 +113,15 @@ def extract_text(pdf_path: Path, min_chars_before_ocr: int, max_pages: int, ocr:
         return direct_text, {"method": "pdf_text", "pages": len(pages_text), "ocr_used": False}, warnings
 
     ocr_text: list[str] = []
+    ocr_pages: list[dict[str, Any]] = []
     try:
         for page_index in range(len(pages_text)):
             image = render_page(pdf_path, page_index, ocr.dpi)
-            ocr_text.append(pytesseract.image_to_string(image, lang=ocr.languages))
+            prepared, page_info = prepare_ocr_image(image, ocr, pytesseract)
+            text = pytesseract.image_to_string(prepared, lang=ocr.languages, config=ocr.tesseract_config)
+            page_info["text_length"] = len(text.strip())
+            ocr_pages.append(page_info)
+            ocr_text.append(text)
     except Exception as exc:
         warnings.append(f"OCR failed: {exc}")
         return direct_text, {"method": "pdf_text", "pages": len(pages_text), "ocr_used": False}, warnings
@@ -116,7 +131,126 @@ def extract_text(pdf_path: Path, min_chars_before_ocr: int, max_pages: int, ocr:
         warnings.append("OCR produced no text.")
         return direct_text, {"method": "pdf_text", "pages": len(pages_text), "ocr_used": False}, warnings
 
-    return merged, {"method": "ocr", "pages": len(pages_text), "ocr_used": True}, warnings
+    return merged, {
+        "method": "ocr",
+        "pages": len(pages_text),
+        "ocr_used": True,
+        "ocr_languages": ocr.languages,
+        "ocr_dpi": ocr.dpi,
+        "tesseract_config": ocr.tesseract_config,
+        "ocr_pages": ocr_pages,
+    }, warnings
+
+
+def prepare_ocr_image(image: Any, ocr: OcrConfig, pytesseract: Any) -> tuple[Any, dict[str, Any]]:
+    info: dict[str, Any] = {
+        "preprocess_enabled": ocr.preprocess,
+        "steps": [],
+        "orientation_rotation": 0,
+        "deskew_angle": 0.0,
+    }
+    if not ocr.preprocess:
+        return image, info
+
+    try:
+        from PIL import ImageEnhance, ImageFilter, ImageOps
+    except ImportError as exc:
+        raise RuntimeError("Pillow is not installed. Run: pip install -r requirements.txt") from exc
+
+    prepared = image.convert("RGB")
+
+    if ocr.auto_rotate:
+        rotation = detect_orientation_rotation(prepared, pytesseract)
+        info["orientation_rotation"] = rotation
+        if rotation:
+            prepared = prepared.rotate(-rotation, expand=True, fillcolor="white")
+            info["steps"].append(f"rotate:{rotation}")
+
+    gray = ImageOps.grayscale(prepared)
+    gray = ImageOps.autocontrast(gray)
+    info["steps"].append("grayscale_autocontrast")
+
+    if ocr.contrast and ocr.contrast != 1.0:
+        gray = ImageEnhance.Contrast(gray).enhance(ocr.contrast)
+        info["steps"].append(f"contrast:{ocr.contrast:g}")
+
+    if ocr.sharpness and ocr.sharpness != 1.0:
+        gray = ImageEnhance.Sharpness(gray).enhance(ocr.sharpness)
+        info["steps"].append(f"sharpness:{ocr.sharpness:g}")
+
+    gray = gray.filter(ImageFilter.MedianFilter(size=3))
+    info["steps"].append("median_filter")
+
+    if ocr.deskew:
+        angle = estimate_skew_angle(gray, ocr.max_deskew_degrees)
+        info["deskew_angle"] = round(angle, 2)
+        if abs(angle) >= 0.25:
+            gray = gray.rotate(-angle, expand=True, fillcolor=255)
+            info["steps"].append(f"deskew:{angle:.2f}")
+
+    if ocr.threshold is not None:
+        threshold = max(0, min(255, int(ocr.threshold)))
+        gray = gray.point(lambda pixel: 255 if pixel > threshold else 0)
+        info["steps"].append(f"threshold:{threshold}")
+
+    return gray, info
+
+
+def detect_orientation_rotation(image: Any, pytesseract: Any) -> int:
+    try:
+        osd = pytesseract.image_to_osd(image)
+    except Exception:
+        return 0
+
+    match = re.search(r"Rotate:\s+(\d+)", osd)
+    if not match:
+        return 0
+    rotation = int(match.group(1)) % 360
+    return rotation if rotation in {90, 180, 270} else 0
+
+
+def estimate_skew_angle(image: Any, max_degrees: float) -> float:
+    if max_degrees <= 0:
+        return 0.0
+
+    working = image.convert("L")
+    max_width = 900
+    if working.width > max_width:
+        ratio = max_width / working.width
+        new_size = (max_width, max(1, int(working.height * ratio)))
+        working = working.resize(new_size, _pil_resampling())
+
+    binary = working.point(lambda pixel: 0 if pixel < 180 else 255)
+    if _dark_pixel_count(binary) < 100:
+        return 0.0
+
+    best_angle = 0.0
+    best_score = _horizontal_projection_score(binary)
+    steps = int(max_degrees / 0.5)
+    for index in range(-steps, steps + 1):
+        angle = index * 0.5
+        if angle == 0:
+            continue
+        rotated = binary.rotate(angle, expand=True, fillcolor=255)
+        score = _horizontal_projection_score(rotated)
+        if score > best_score:
+            best_score = score
+            best_angle = angle
+    return best_angle
+
+
+def _dark_pixel_count(image: Any) -> int:
+    return sum(1 for pixel in image.tobytes() if pixel < 128)
+
+
+def _horizontal_projection_score(image: Any) -> float:
+    width, height = image.size
+    data = image.tobytes()
+    rows = [data[start:start + width].count(0) for start in range(0, len(data), width)]
+    if not rows:
+        return 0.0
+    mean = sum(rows) / height
+    return sum((row - mean) ** 2 for row in rows) / height
 
 
 def write_pdf_with_metadata(source: Path, target: Path, metadata: dict[str, str]) -> tuple[bool, str | None]:

@@ -85,6 +85,9 @@ def classify_with_ollama(
         "Return only JSON matching the schema. Prefer fixed categories. "
         "Create an ai_created category only when no fixed category fits. "
         "Use YYYY-MM-DD for dates. If unknown, use an empty string. "
+        "Use only facts supported by the provided document text. "
+        "Do not invent sender names, dates, invoice titles, or categories when OCR text is weak. "
+        "If the text is ambiguous, choose the best fixed category with low confidence or use other. "
         "Use the document language for sender/title when possible."
     )
     user_prompt = {
