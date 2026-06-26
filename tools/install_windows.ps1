@@ -49,6 +49,40 @@ function Invoke-Native {
     }
 }
 
+function Invoke-Ollama {
+    param([string[]]$Arguments)
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $output = & ollama @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+        return @{
+            ExitCode = $exitCode
+            Output = (($output | ForEach-Object { $_.ToString() }) -join "`n")
+        }
+    } catch {
+        return @{
+            ExitCode = 1
+            Output = $_.Exception.Message
+        }
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
+function Write-FirstOutputLine {
+    param(
+        [string]$Prefix,
+        [string]$Output
+    )
+
+    $line = ([regex]::Split($Output, "\r?\n") | Where-Object { $_.Trim() } | Select-Object -First 1)
+    if ($line) {
+        Write-Host "$Prefix$line"
+    }
+}
+
 function Install-WingetPackage {
     param(
         [string]$PackageId,
@@ -258,10 +292,11 @@ function Ensure-Ollama {
         return
     }
 
-    try {
-        $version = (& ollama --version 2>$null | Select-Object -First 1)
-        Write-Ok "Ollama found: $version"
-    } catch {
+    $versionResult = Invoke-Ollama -Arguments @("--version")
+    if ($versionResult.Output) {
+        Write-Ok "Ollama command found."
+        Write-FirstOutputLine -Prefix "Ollama: " -Output $versionResult.Output
+    } else {
         Write-Ok "Ollama command found."
     }
 
@@ -271,24 +306,30 @@ function Ensure-Ollama {
     }
 
     Write-Step "Checking Ollama model $Model"
-    & ollama list 1>$null 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $listResult = Invoke-Ollama -Arguments @("list")
+    if ($listResult.ExitCode -ne 0) {
         Write-Warn "Ollama is installed, but the local service is not responding."
+        if ($listResult.Output) {
+            Write-FirstOutputLine -Prefix "Ollama output: " -Output $listResult.Output
+        }
         Write-Host "Start Ollama once from the Start menu, then run:"
         Write-Host "  ollama pull $Model"
+        Write-Host "After that, Start.cmd can be used normally."
         return
     }
 
-    $installedModel = (& ollama list) | Select-String -SimpleMatch $Model
-    if ($installedModel) {
+    if ($listResult.Output -match [regex]::Escape($Model)) {
         Write-Ok "Ollama model already installed: $Model"
         return
     }
 
     Write-Host "Downloading model $Model. This can take a while."
-    & ollama pull $Model
-    if ($LASTEXITCODE -ne 0) {
+    $pullResult = Invoke-Ollama -Arguments @("pull", $Model)
+    if ($pullResult.ExitCode -ne 0) {
         Write-Warn "Could not download $Model automatically. Run later: ollama pull $Model"
+        if ($pullResult.Output) {
+            Write-FirstOutputLine -Prefix "Ollama output: " -Output $pullResult.Output
+        }
     } else {
         Write-Ok "Ollama model installed: $Model"
     }
