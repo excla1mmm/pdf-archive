@@ -15,6 +15,27 @@ Der Workflow:
 
 ## Schnellstart unter Windows
 
+Für Kunden ist der einfache Weg:
+
+1. Projektordner öffnen.
+2. `Install_Windows.cmd` per Doppelklick starten.
+3. PDF-Dateien in `Input` legen.
+4. `Process_To_Queue.cmd` per Doppelklick starten.
+5. `Review_GUI.cmd` per Doppelklick starten und Dokumente mit `Übernehmen` bestätigen.
+
+`Install_Windows.cmd` versucht automatisch:
+
+- Python 3.12 über `winget` zu installieren, falls Python fehlt;
+- die virtuelle Umgebung `.venv` zu erstellen;
+- alle Python-Abhängigkeiten aus `requirements.txt` zu installieren;
+- Tesseract OCR zu prüfen beziehungsweise über `winget` zu installieren;
+- Ollama zu prüfen beziehungsweise über `winget` zu installieren;
+- das Modell `gemma3:4b` zu laden.
+
+Wenn `winget` oder Firmenrichtlinien eine automatische Installation blockieren, zeigt das Skript die nötigen manuellen Schritte an. Danach `Install_Windows.cmd` einfach erneut starten.
+
+Manuelle Installation für technische Nutzer:
+
 Python 3.11 oder 3.12 installieren, dann in PowerShell:
 
 ```powershell
