@@ -33,6 +33,19 @@ Nach dem Herunterladen oder Klonen des Projektordners:
 
 Wenn `winget` durch Windows- oder Firmenrichtlinien blockiert ist, zeigt das Skript die manuellen Schritte an. Danach `Install.cmd` erneut starten.
 
+### Hinweis für Windows ARM64
+
+Auf Windows ARM64, zum Beispiel in Parallels auf Apple Silicon, verwendet das Setup absichtlich **x64 Python** statt nativem ARM64 Python. Einige benötigte PDF-Pakete liefern für Windows ARM64 keine fertigen Binärpakete. Mit ARM64 Python würde `pip` versuchen, Pakete wie `PyMuPDF` lokal mit Visual Studio zu kompilieren.
+
+Wenn die Installation vorher mit `PyMuPDF` oder `Preparing metadata (pyproject.toml)` fehlgeschlagen ist:
+
+```powershell
+git pull
+Install.cmd
+```
+
+Das Setup erkennt eine vorhandene ungeeignete `.venv` und erstellt sie mit x64 Python neu.
+
 ## Nutzung
 
 PDF-Dateien werden in diesen Ordner gelegt:
