@@ -138,7 +138,7 @@ function Ensure-Python {
     Write-Warn "Python was not found after automatic installation attempt."
     Write-Host "Manual download: https://www.python.org/downloads/windows/"
     Write-Host "Important: enable 'Add python.exe to PATH' during installation."
-    throw "Install Python 3.11/3.12, reopen PowerShell, then run Install_Windows.cmd again."
+    throw "Install Python 3.11/3.12, reopen PowerShell, then run Install.cmd again."
 }
 
 function Add-UserPathIfMissing {
@@ -264,5 +264,4 @@ Write-Host ""
 Write-Host "Setup finished." -ForegroundColor Green
 Write-Host "Next steps:"
 Write-Host "  1. Put PDF files into the Input folder."
-Write-Host "  2. Double-click Process_To_Queue.cmd."
-Write-Host "  3. Double-click Review_GUI.cmd."
+Write-Host "  2. Double-click Start.cmd."
