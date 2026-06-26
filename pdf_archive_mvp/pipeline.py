@@ -6,14 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .config import AppConfig, Category
+from .config import AppConfig
 from .llm import classify_with_ollama, fallback_classification, normalize_classification
+from .naming import build_filename, resolve_category
 from .pdf_tools import decode_barcodes, extract_text, write_pdf_with_metadata
+from .review_queue import enqueue_review_item
 from .sidecar import write_json, write_xml
 from .utils import (
     find_date_candidates,
     now_iso,
-    safe_filename_part,
     truncate_text,
     unique_path,
 )
@@ -44,20 +45,31 @@ def iter_pdfs(input_dir: Path, recursive: bool) -> list[Path]:
     return sorted(path for path in input_dir.glob(pattern) if path.is_file())
 
 
-def process_directory(config: AppConfig, dry_run: bool = False, no_llm: bool = False) -> list[ProcessResult]:
+def process_directory(
+    config: AppConfig,
+    dry_run: bool = False,
+    no_llm: bool = False,
+    queue_review: bool = False,
+) -> list[ProcessResult]:
     config.input_dir.mkdir(parents=True, exist_ok=True)
     config.archive_dir.mkdir(parents=True, exist_ok=True)
     results = []
     for pdf_path in iter_pdfs(config.input_dir, config.recursive_input):
         try:
-            results.append(process_pdf(config, pdf_path, dry_run=dry_run, no_llm=no_llm))
+            results.append(process_pdf(config, pdf_path, dry_run=dry_run, no_llm=no_llm, queue_review=queue_review))
         except Exception as exc:
             logging.exception("Failed to process %s", pdf_path)
             results.append(ProcessResult(pdf_path, None, "error", True, str(exc)))
     return results
 
 
-def process_pdf(config: AppConfig, pdf_path: Path, dry_run: bool = False, no_llm: bool = False) -> ProcessResult:
+def process_pdf(
+    config: AppConfig,
+    pdf_path: Path,
+    dry_run: bool = False,
+    no_llm: bool = False,
+    queue_review: bool = False,
+) -> ProcessResult:
     logging.info("Processing %s", pdf_path)
     processed_at = now_iso()
     archive_id = str(uuid.uuid4())
@@ -171,6 +183,17 @@ def process_pdf(config: AppConfig, pdf_path: Path, dry_run: bool = False, no_llm
         logging.info("Dry run target for %s: %s", pdf_path, target_pdf)
         return ProcessResult(pdf_path, target_pdf, "dry_run", review_required, "Planned only; no files were written.")
 
+    if queue_review:
+        queued = enqueue_review_item(config, pdf_path, payload)
+        logging.info("QUEUED_REVIEW %s -> %s", pdf_path, queued.pdf_path)
+        return ProcessResult(
+            pdf_path,
+            queued.pdf_path,
+            "queued_review",
+            True,
+            f"Queued for manual review: {queued.item_id}",
+        )
+
     target_dir.mkdir(parents=True, exist_ok=True)
     metadata_written, metadata_error = write_pdf_with_metadata(
         pdf_path,
@@ -216,46 +239,3 @@ def insufficient_text_classification(config: AppConfig, pdf_path: Path, date_can
         "confidence": 0.0,
         "reasoning": "The extracted text is too short for reliable classification; document requires review.",
     }
-
-
-def resolve_category(config: AppConfig, classification: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    if classification["category_source"] == "fixed":
-        category = config.categories_by_id[classification["category_id"]]
-        return safe_filename_part(category.folder, fallback=category.id), {
-            "id": category.id,
-            "name": category.name,
-            "folder": category.folder,
-            "source": "fixed",
-            "new_category_suggestion": "",
-        }
-
-    new_name = classification["new_category_suggestion"] or classification["category_name"] or classification["category_id"]
-    folder = safe_filename_part(new_name, fallback=classification["category_id"], max_length=60)
-    return folder, {
-        "id": classification["category_id"],
-        "name": new_name,
-        "folder": folder,
-        "source": "ai_created",
-        "new_category_suggestion": new_name,
-    }
-
-
-def build_filename(
-    document_date: str | None,
-    category_folder: str,
-    classification: dict[str, Any],
-    barcode: str,
-) -> str:
-    date_part = document_date or "undated"
-    parts = [
-        safe_filename_part(date_part, fallback="undated", max_length=20),
-        safe_filename_part(category_folder, fallback="Kategorie", max_length=40),
-        safe_filename_part(classification.get("sender"), fallback="", max_length=40),
-        safe_filename_part(classification.get("short_filename_title"), fallback="Dokument", max_length=60),
-    ]
-    if barcode:
-        parts.append(safe_filename_part(barcode, fallback="", max_length=40))
-
-    cleaned = [part for part in parts if part]
-    filename = "_".join(cleaned)
-    return safe_filename_part(filename, fallback="document", max_length=180) + ".pdf"

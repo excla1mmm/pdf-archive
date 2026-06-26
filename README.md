@@ -55,6 +55,24 @@ Danach die echte Verarbeitung starten:
 python archive_pdf.py
 ```
 
+Alle erkannten Daten zuerst in eine manuelle Review-Warteschlange legen:
+
+```powershell
+python archive_pdf.py --queue-review
+```
+
+Danach das einfache Windows-Formular für Prüfung und Umbenennung öffnen:
+
+```powershell
+python archive_pdf.py --review-gui
+```
+
+Alternativ kann das Formular direkt gestartet werden:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\review_gui.ps1 -Config .\config.example.yml
+```
+
 Ohne LLM, nur mit Keyword-Fallback:
 
 ```powershell
@@ -73,6 +91,12 @@ Beispielstruktur:
 
 ```text
 Archive/
+  _Queue/
+    review_queue.sqlite3
+    pending/
+      scan_12345678.pdf
+    drafts/
+      12345678-....json
   2026/
     Energie/
       2026-06-24_Energie_Stadtwerke_Rechnung_1234567890.pdf
@@ -81,6 +105,34 @@ Archive/
     _Review/
       Rechnung/
         undated_Rechnung_Dokument.pdf
+```
+
+## Manuelle Review-Warteschlange
+
+Der Modus `--queue-review` analysiert PDF-Dateien wie gewohnt, archiviert sie aber noch nicht final. Stattdessen werden PDF und erkannte Felder in `Archive/_Queue` abgelegt. Das ist für den Startbetrieb sinnvoll, wenn jede Entscheidung vor dem finalen Speichern noch von einem Menschen bestätigt werden soll.
+
+Das Windows-Formular `tools/review_gui.ps1` zeigt pro Dokument:
+
+- erkanntes Dokumentdatum;
+- Barcode;
+- Kategorie;
+- Absender;
+- Titel;
+- Kurztext für den Dateinamen;
+- Review-Gründe und Textauszug.
+
+Die Felder sind vorbefüllt, können aber manuell korrigiert werden. Erst nach `Übernehmen` passiert die finale Archivierung:
+
+- der finale Dateiname wird gebildet;
+- die PDF-Metadaten werden geschrieben;
+- JSON und optional XML werden erzeugt;
+- die PDF wird nach `Archive/JAHR/Kategorie` verschoben;
+- der Queue-Eintrag wird als `approved` markiert.
+
+Für Diagnose oder eigene Integrationen kann die Queue auch als JSON ausgegeben werden:
+
+```powershell
+python archive_pdf.py --list-review-queue --json
 ```
 
 Ein Dokument landet in `_Review`, wenn:
