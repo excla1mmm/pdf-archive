@@ -1,10 +1,208 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from typing import Any
 
 from .config import AppConfig, Category
 from .utils import compact_whitespace, normalize_confidence, safe_filename_part, truncate_text
+
+FALLBACK_CATEGORY_SIGNALS: dict[str, dict[str, int]] = {
+    "energy": {
+        "stadtwerke": 6,
+        "strom": 5,
+        "stromkosten": 5,
+        "gas": 4,
+        "gasverbrauch": 4,
+        "kwh": 5,
+        "zaehler": 5,
+        "zaehlernummer": 5,
+        "arbeitspreis": 5,
+        "grundpreis": 5,
+        "netzentgelt": 5,
+        "netzentgelte": 5,
+        "verbrauch": 4,
+        "vertragskonto": 4,
+        "lieferadresse": 3,
+        "energie": 4,
+        "energiepartner": 4,
+        "wasser": 3,
+        "abschlag": 3,
+    },
+    "salary": {
+        "gehaltsabrechnung": 7,
+        "lohnabrechnung": 7,
+        "entgeltabrechnung": 7,
+        "verdienstabrechnung": 7,
+        "lohnsteuer": 5,
+        "steuerklasse": 5,
+        "sozialversicherung": 5,
+        "personalnummer": 5,
+        "arbeitgeber": 4,
+        "nettobezug": 4,
+        "gesamtbrutto": 4,
+        "auszahlungsbetrag": 4,
+        "gehalt": 4,
+        "lohn": 4,
+    },
+    "bank_statement": {
+        "kontoauszug": 6,
+        "kontostand": 5,
+        "iban": 4,
+        "bic": 4,
+        "buchungstag": 4,
+        "wertstellung": 4,
+        "saldo": 4,
+    },
+    "medical": {
+        "laborbericht": 6,
+        "labor": 5,
+        "arzt": 5,
+        "praxis": 4,
+        "diagnose": 5,
+        "befund": 5,
+        "rezept": 4,
+        "behandlung": 4,
+    },
+    "invoice": {
+        "rechnung": 5,
+        "rechnungsnummer": 5,
+        "rechnungsdatum": 5,
+        "zahlbetrag": 4,
+        "faellig": 4,
+        "mwst": 4,
+        "ust": 3,
+        "betrag": 2,
+    },
+    "shopping": {
+        "bestellung": 5,
+        "lieferung": 5,
+        "lieferschein": 5,
+        "retour": 4,
+        "amazon": 4,
+        "ebay": 4,
+        "paket": 3,
+    },
+    "insurance": {
+        "versicherung": 5,
+        "versicherungsnummer": 5,
+        "police": 4,
+        "beitrag": 3,
+        "schaden": 4,
+        "haftpflicht": 4,
+    },
+    "contract": {
+        "vertrag": 5,
+        "vereinbarung": 4,
+        "kuendigung": 5,
+        "laufzeit": 4,
+        "agb": 3,
+    },
+    "tax": {
+        "finanzamt": 6,
+        "steuerbescheid": 6,
+        "einkommensteuer": 5,
+        "umsatzsteuer": 5,
+        "steuernummer": 4,
+        "bescheid": 2,
+    },
+    "pension": {
+        "rentenversicherung": 6,
+        "rentenbescheid": 6,
+        "rente": 5,
+        "pension": 5,
+        "versicherungsverlauf": 4,
+    },
+    "real_estate": {
+        "nebenkostenabrechnung": 6,
+        "mietvertrag": 6,
+        "miete": 5,
+        "vermieter": 4,
+        "wohnung": 4,
+        "grundsteuer": 4,
+    },
+    "health_insurance": {
+        "krankenkasse": 6,
+        "krankenversicherung": 6,
+        "versichertennummer": 5,
+        "versichertenkarte": 4,
+        "mitgliedsbescheinigung": 4,
+        "gesundheitskarte": 4,
+    },
+    "government": {
+        "behoerde": 5,
+        "behorde": 5,
+        "buergerbuero": 5,
+        "stadtverwaltung": 5,
+        "gemeinde": 4,
+        "bescheid": 3,
+        "antrag": 3,
+    },
+    "legal": {
+        "rechtsanwalt": 6,
+        "kanzlei": 6,
+        "gericht": 5,
+        "klage": 5,
+        "aktenzeichen": 5,
+        "frist": 4,
+        "fristschreiben": 5,
+    },
+    "car": {
+        "werkstatt": 6,
+        "fahrzeug": 5,
+        "kfz": 5,
+        "kennzeichen": 4,
+        "reifen": 4,
+        "leasing": 4,
+    },
+    "telecom": {
+        "telekom": 7,
+        "vodafone": 7,
+        "mobilfunk": 6,
+        "telefon": 5,
+        "internet": 5,
+        "rufnummer": 4,
+        "kundennummer": 2,
+        "router": 4,
+        "o2": 5,
+    },
+    "warranty": {
+        "garantie": 6,
+        "gewaehrleistung": 6,
+        "reparatur": 5,
+        "seriennummer": 4,
+        "garantienachweis": 6,
+    },
+    "travel": {
+        "reise": 5,
+        "hotel": 5,
+        "flug": 5,
+        "ticket": 4,
+        "buchung": 4,
+        "boarding": 4,
+        "buchungsnummer": 4,
+    },
+    "education": {
+        "zertifikat": 6,
+        "bescheinigung": 5,
+        "schule": 5,
+        "universitaet": 5,
+        "kurs": 4,
+        "bildung": 4,
+    },
+}
+
+PREFIX_SIGNALS = {
+    "energie",
+    "lohn",
+    "rechnung",
+    "rente",
+    "strom",
+    "steuer",
+    "vertrag",
+    "zaehler",
+}
 
 
 CLASSIFICATION_SCHEMA: dict[str, Any] = {
@@ -121,22 +319,39 @@ def classify_with_ollama(
     return json.loads(content)
 
 
-def fallback_classification(config: AppConfig, text: str, date_candidates: list[str]) -> dict[str, Any]:
-    text_lower = text.lower()
-    scored: list[tuple[int, Category]] = []
+def fallback_classification(
+    config: AppConfig,
+    text: str,
+    date_candidates: list[str],
+    source_name: str = "",
+) -> dict[str, Any]:
+    text_match = _normalize_for_matching(text)
+    source_match = _normalize_for_matching(source_name)
+    scored: list[tuple[int, int, Category, list[str]]] = []
     for category in config.categories:
-        score = sum(1 for keyword in category.keywords if keyword and keyword in text_lower)
-        scored.append((score, category))
+        score, matches = _fallback_score_category(category, text_match, source_match)
+        scored.append((score, len(matches), category, matches))
 
-    scored.sort(key=lambda item: item[0], reverse=True)
-    best_score, best_category = scored[0]
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    best_score, _, best_category, best_matches = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0
+    score_margin = best_score - second_score
     if best_score == 0:
         best_category = config.categories_by_id.get("other", config.categories[-1])
-        confidence = 0.35
+        confidence = 0.30
+        best_matches = []
+        score_margin = 0
+        strong_match = False
     else:
-        confidence = min(0.88, 0.52 + best_score * 0.12)
+        confident_match = best_score >= 4 and score_margin >= 2
+        strong_match = best_score >= 10 and score_margin >= 5
+        if confident_match:
+            confidence = min(0.95, 0.60 + best_score * 0.025 + score_margin * 0.035)
+        else:
+            confidence = min(0.72, 0.42 + best_score * 0.04 + max(score_margin, 0) * 0.03)
 
     title = _fallback_title(text, best_category)
+    match_hint = ", ".join(best_matches[:6]) if best_matches else "no strong keyword matches"
     return {
         "document_date": date_candidates[0] if date_candidates else "",
         "category_id": best_category.id,
@@ -147,7 +362,13 @@ def fallback_classification(config: AppConfig, text: str, date_candidates: list[
         "title": title,
         "short_filename_title": safe_filename_part(title, fallback="Dokument", max_length=60),
         "confidence": confidence,
-        "reasoning": "Fallback keyword classification; local LLM was disabled or unavailable.",
+        "reasoning": (
+            "Fallback keyword classification; "
+            f"best={best_category.id} score={best_score}, margin={score_margin}, matches={match_hint}."
+        ),
+        "fallback_score": best_score,
+        "fallback_score_margin": score_margin,
+        "fallback_strong_match": strong_match,
     }
 
 
@@ -193,3 +414,54 @@ def _fallback_title(text: str, category: Category) -> str:
         if 8 <= len(cleaned) <= 90:
             return cleaned
     return category.folder
+
+
+def _fallback_score_category(category: Category, text: str, source_name: str) -> tuple[int, list[str]]:
+    score = 0
+    matches: list[str] = []
+    seen: set[str] = set()
+
+    for keyword in category.keywords:
+        normalized = _normalize_for_matching(keyword)
+        if normalized and _contains_signal(text, normalized):
+            score += 1
+            seen.add(normalized)
+            matches.append(normalized)
+
+    for signal, weight in FALLBACK_CATEGORY_SIGNALS.get(category.id, {}).items():
+        normalized = _normalize_for_matching(signal)
+        if not normalized:
+            continue
+        already_counted = normalized in seen
+        if _contains_signal(text, normalized):
+            score += weight if not already_counted else max(0, weight - 1)
+            if not already_counted:
+                matches.append(normalized)
+        elif source_name and _contains_signal(source_name, normalized):
+            score += max(1, min(2, weight // 2))
+            matches.append(f"filename:{normalized}")
+
+    return score, matches
+
+
+def _contains_signal(haystack: str, signal: str) -> bool:
+    if not haystack or not signal:
+        return False
+    if " " in signal:
+        return signal in haystack
+    if signal in PREFIX_SIGNALS:
+        return re.search(rf"\b{re.escape(signal)}[a-z0-9]*\b", haystack) is not None
+    return re.search(rf"\b{re.escape(signal)}\b", haystack) is not None
+
+
+def _normalize_for_matching(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    normalized = (
+        normalized.replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("ß", "ss")
+    )
+    normalized = re.sub(r"[_\-./\\]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()

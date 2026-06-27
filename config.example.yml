@@ -68,92 +68,92 @@ categories:
     name: Rechnung
     folder: Rechnung
     description: Invoices, payment requests, bills, receipts with payment obligation.
-    keywords: [rechnung, invoice, zahlbetrag, faellig, mwst, ust, betrag]
+    keywords: [rechnung, rechnungsnummer, rechnungsdatum, invoice, zahlbetrag, faellig, fällig, mwst, ust, betrag]
   - id: bank_statement
     name: Kontoauszug
     folder: Kontoauszug
     description: Bank statements, account movements, credit card statements.
-    keywords: [kontoauszug, kontostand, iban, bic, umsatz, bank]
+    keywords: [kontoauszug, kontostand, iban, bic, umsatz, buchungstag, wertstellung, saldo, bank]
   - id: tax
     name: Steuer
     folder: Steuer
     description: Tax office, tax returns, tax notices, VAT and income tax documents.
-    keywords: [steuer, finanzamt, einkommensteuer, umsatzsteuer, bescheid]
+    keywords: [steuer, finanzamt, steuerbescheid, einkommensteuer, umsatzsteuer, steuernummer, bescheid]
   - id: insurance
     name: Versicherung
     folder: Versicherung
     description: Insurance policies, claims, premium notices.
-    keywords: [versicherung, police, beitrag, schaden, haftpflicht]
+    keywords: [versicherung, versicherungsnummer, police, beitrag, schaden, haftpflicht]
   - id: salary
     name: Gehalt
     folder: Gehalt
     description: Payslips and salary related documents.
-    keywords: [gehalt, lohn, abrechnung, entgelt, brutto, netto]
+    keywords: [gehalt, gehaltsabrechnung, lohn, lohnabrechnung, entgeltabrechnung, verdienstabrechnung, lohnsteuer, steuerklasse, sozialversicherung, personalnummer, arbeitgeber]
   - id: pension
     name: Rente
     folder: Rente
     description: Pension and retirement documents.
-    keywords: [rente, rentenversicherung, pension]
+    keywords: [rente, rentenbescheid, rentenversicherung, versicherungsverlauf, pension]
   - id: real_estate
     name: Immobilien
     folder: Immobilien
     description: Rent, property, lease, ownership and housing documents.
-    keywords: [miete, mietvertrag, immobilie, grundsteuer, wohnung]
+    keywords: [miete, nebenkostenabrechnung, mietvertrag, vermieter, immobilie, grundsteuer, wohnung]
   - id: health_insurance
     name: Krankenkasse
     folder: Krankenkasse
     description: Health insurance letters and statements.
-    keywords: [krankenkasse, krankenversicherung, versichertenkarte]
+    keywords: [krankenkasse, krankenversicherung, versichertennummer, versichertenkarte, mitgliedsbescheinigung, gesundheitskarte]
   - id: medical
     name: Arzt
     folder: Arzt
     description: Doctor letters, lab reports, prescriptions, medical invoices.
-    keywords: [arzt, praxis, diagnose, labor, rezept, behandlung]
+    keywords: [arzt, praxis, diagnose, labor, laborbericht, befund, rezept, behandlung]
   - id: government
     name: Behoerde
     folder: Behoerde
     description: Government authorities, municipalities, official notices.
-    keywords: [behoerde, amt, stadt, gemeinde, bescheid, antrag]
+    keywords: [behoerde, behörde, amt, stadtverwaltung, buergerbuero, bürgerbüro, gemeinde, bescheid, antrag]
   - id: legal
     name: Gericht_Anwalt
     folder: Gericht_Anwalt
     description: Court, lawyer, legal disputes and legal notices.
-    keywords: [gericht, anwalt, kanzlei, klage, frist, aktenzeichen]
+    keywords: [gericht, anwalt, rechtsanwalt, kanzlei, klage, frist, fristschreiben, aktenzeichen]
   - id: contract
     name: Vertrag
     folder: Vertrag
     description: Contracts, agreements, subscriptions.
-    keywords: [vertrag, vereinbarung, kuendigung, laufzeit, agb]
+    keywords: [vertrag, vereinbarung, kuendigung, kündigung, laufzeit, agb]
   - id: car
     name: Auto
     folder: Auto
     description: Vehicle, repair, registration, insurance and leasing.
-    keywords: [auto, fahrzeug, kfz, werkstatt, reifen, leasing]
+    keywords: [auto, fahrzeug, kfz, werkstatt, kennzeichen, reifen, leasing]
   - id: energy
     name: Energie
     folder: Energie
     description: Electricity, gas, water, utilities and municipal services.
-    keywords: [strom, gas, wasser, energie, stadtwerke, zaehler]
+    keywords: [strom, stromkosten, gas, gasverbrauch, wasser, energie, energiepartner, stadtwerke, zaehler, zähler, zaehlernummer, zählernummer, kwh, arbeitspreis, grundpreis, netzentgelt, netzentgelte, vertragskonto, lieferadresse, verbrauch, abschlag]
   - id: telecom
     name: Telekom
     folder: Telekom
     description: Internet, mobile, phone and communication providers.
-    keywords: [telefon, internet, mobilfunk, telekom, vodafone, o2]
+    keywords: [telefon, internet, mobilfunk, telekom, vodafone, o2, rufnummer, router]
   - id: shopping
     name: Bestellung_Lieferung
     folder: Bestellung_Lieferung
     description: Orders, delivery notes, returns, online purchases.
-    keywords: [bestellung, lieferung, retour, amazon, ebay, paket]
+    keywords: [bestellung, lieferung, lieferschein, retour, amazon, ebay, paket]
   - id: warranty
     name: Garantie
     folder: Garantie
     description: Warranty, repair proof, product guarantee.
-    keywords: [garantie, gewaehrleistung, reparatur, seriennummer]
+    keywords: [garantie, garantienachweis, gewaehrleistung, gewährleistung, reparatur, seriennummer]
   - id: travel
     name: Reise
     folder: Reise
     description: Travel bookings, hotels, flights, tickets.
-    keywords: [reise, hotel, flug, ticket, buchung, boarding]
+    keywords: [reise, hotel, flug, ticket, buchung, buchungsnummer, boarding]
   - id: education
     name: Bildung
     folder: Bildung

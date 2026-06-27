@@ -71,6 +71,8 @@ def build_review_reasons(
         reasons.append("ai_created_category")
     if not has_enough_text_for_llm:
         reasons.append("insufficient_text")
+    if classification.get("llm_unavailable") and not classification.get("fallback_strong_match"):
+        reasons.append("llm_unavailable")
     return reasons
 
 

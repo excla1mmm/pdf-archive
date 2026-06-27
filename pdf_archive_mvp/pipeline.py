@@ -111,11 +111,12 @@ def process_pdf(
             raw_classification = classify_with_ollama(config, text, primary_barcode, date_candidates)
             llm_info["used"] = True
         except Exception as exc:
-            raw_classification = fallback_classification(config, text, date_candidates)
+            raw_classification = fallback_classification(config, text, date_candidates, source_name=pdf_path.name)
+            raw_classification["llm_unavailable"] = True
             llm_info["error"] = str(exc)
             warnings.append(f"LLM unavailable; fallback classification used: {exc}")
     else:
-        raw_classification = fallback_classification(config, text, date_candidates)
+        raw_classification = fallback_classification(config, text, date_candidates, source_name=pdf_path.name)
         llm_info["error"] = "LLM disabled by config or CLI."
 
     classification = normalize_classification(config, raw_classification)
