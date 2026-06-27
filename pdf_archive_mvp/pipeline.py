@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .archive_code import assign_archive_code, infer_source_type
 from .config import AppConfig
 from .llm import classify_with_ollama, fallback_classification, normalize_classification
 from .naming import build_filename, resolve_category
 from .pdf_tools import decode_barcodes, extract_text, write_pdf_with_metadata
 from .review_queue import enqueue_review_item
-from .sidecar import write_json, write_xml
+from .sidecar import json_sidecar_path, write_json, write_xml, xml_sidecar_path
 from .utils import (
     find_date_candidates,
     now_iso,
@@ -82,7 +84,8 @@ def process_pdf(
     except Exception as exc:
         warnings.append(f"Barcode detection failed: {exc}")
 
-    primary_barcode = barcodes[0]["text"] if barcodes else ""
+    primary_barcode, ignored_barcodes = select_archive_barcode(barcodes)
+    warnings.extend(ignored_barcodes)
     text, extraction, text_warnings = extract_text(
         pdf_path,
         min_chars_before_ocr=config.min_text_chars_before_ocr,
@@ -120,12 +123,23 @@ def process_pdf(
     warnings.extend(date_validation["warnings"])
     target_year = document_date[:4] if document_date else config.unknown_year_folder
     category_folder, category_payload = resolve_category(config, classification)
+    source_type = infer_source_type(config, pdf_path, primary_barcode)
+    archive_code_info = assign_archive_code(
+        config,
+        source_type,
+        document_date,
+        primary_barcode,
+        commit=not dry_run,
+    )
+    archive_code = archive_code_info.code
 
     review_reasons = build_review_reasons(
         config,
         classification,
         document_date,
         primary_barcode,
+        archive_code,
+        archive_code_info.source_type,
         date_validation,
         has_enough_text_for_llm,
     )
@@ -137,14 +151,21 @@ def process_pdf(
     else:
         target_dir = config.archive_dir / target_year / category_folder
 
-    filename = build_filename(document_date, category_folder, classification, primary_barcode)
+    filename = build_filename(document_date, category_folder, classification, archive_code)
     target_pdf = unique_path(target_dir / filename)
-    sidecar_base = target_pdf.with_suffix("")
+    target_json = json_sidecar_path(target_pdf)
+    target_xml = xml_sidecar_path(target_pdf)
 
     payload = {
         "schema_version": "pdf-archive-mvp/v1",
         "archive_id": archive_id,
+        "status": "analyzed",
         "processed_at": processed_at,
+        "workflow": {
+            "stage": "analysis",
+            "status": "review_required" if review_required else "ready_for_archive",
+            "metadata_storage": "json_sidecar",
+        },
         "source": {
             "path": str(pdf_path),
             "original_filename": pdf_path.name,
@@ -154,9 +175,21 @@ def process_pdf(
             "year": target_year,
             "folder": str(target_dir),
             "filename": target_pdf.name,
+            "json_sidecar": str(target_json),
+            "xml_sidecar": str(target_xml) if config.create_xml else "",
+        },
+        "metadata_sidecar": {
+            "format": "json",
+            "path": str(target_json),
+            "xml_path": str(target_xml) if config.create_xml else "",
+            "role": "final_metadata",
         },
         "barcode": primary_barcode,
         "barcodes": barcodes,
+        "archive_code": archive_code,
+        "archive_code_info": archive_code_info.as_payload(),
+        "source_type": archive_code_info.source_type,
+        "physical_document": archive_code_info.physical_document,
         "document_date": document_date or "",
         "category": category_payload,
         "sender": classification["sender"],
@@ -200,7 +233,10 @@ def process_pdf(
         target_pdf,
         {
             "Barcode": primary_barcode,
+            "ArchiveCode": archive_code,
             "ArchiveId": archive_id,
+            "ArchiveSourceType": archive_code_info.source_type,
+            "ArchivePhysicalDocument": str(archive_code_info.physical_document).lower(),
             "DocumentDate": document_date or "",
             "DocumentCategory": category_payload["id"],
             "DocumentCategoryName": category_payload["name"],
@@ -213,14 +249,21 @@ def process_pdf(
     if metadata_error:
         payload["extraction"]["warnings"].append(f"PDF metadata write failed; original copied: {metadata_error}")
 
-    write_json(sidecar_base.with_suffix(".json"), payload)
+    status = "review" if review_required else "archived"
+    payload["status"] = status
+    payload["workflow"] = {
+        "stage": "post_processing",
+        "status": status,
+        "metadata_storage": "json_sidecar",
+    }
+
+    write_json(target_json, payload)
     if config.create_xml:
-        write_xml(sidecar_base.with_suffix(".xml"), payload)
+        write_xml(target_xml, payload)
 
     if config.delete_source_after_success and pdf_path.resolve() != target_pdf.resolve():
         pdf_path.unlink()
 
-    status = "review" if review_required else "archived"
     logging.info("%s -> %s", status.upper(), target_pdf)
     return ProcessResult(pdf_path, target_pdf, status, review_required, "Processed successfully.")
 
@@ -239,3 +282,40 @@ def insufficient_text_classification(config: AppConfig, pdf_path: Path, date_can
         "confidence": 0.0,
         "reasoning": "The extracted text is too short for reliable classification; document requires review.",
     }
+
+
+def select_archive_barcode(barcodes: list[dict[str, str]]) -> tuple[str, list[str]]:
+    warnings: list[str] = []
+    if not barcodes:
+        return "", warnings
+
+    top_right = [barcode for barcode in barcodes if barcode.get("source") == "top_right_crop"]
+    full_page = [barcode for barcode in barcodes if barcode.get("source") != "top_right_crop"]
+
+    for barcode in top_right:
+        text = _clean_barcode_text(barcode.get("text", ""))
+        if _is_archive_barcode_text(text):
+            return text, warnings
+        warnings.append(f"Ignored unreadable top-right barcode candidate: {barcode.get('format', '')}")
+
+    for barcode in full_page:
+        text = _clean_barcode_text(barcode.get("text", ""))
+        barcode_format = str(barcode.get("format", "")).casefold()
+        if barcode_format in {"code 128", "code 39", "qr code"} and _is_archive_barcode_text(text):
+            warnings.append("Archive barcode was found only by full-page fallback; verify during review.")
+            return text, warnings
+        warnings.append(f"Ignored non-archive full-page barcode candidate: {barcode.get('format', '')}")
+
+    return "", warnings
+
+
+def _clean_barcode_text(value: str) -> str:
+    return str(value or "").strip()
+
+
+def _is_archive_barcode_text(value: str) -> bool:
+    if not value or len(value) > 80:
+        return False
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        return False
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/+\- ]*", value))

@@ -1,8 +1,15 @@
 # PDF Archive MVP für Windows
 
-Lokaler PDF-Archivierungsassistent für Windows. Das Programm erkennt Barcodes, liest Text per PDF-Extraktion oder OCR, klassifiziert Dokumente mit einem lokalen Ollama-Modell und zeigt die Ergebnisse vor dem finalen Speichern in einem einfachen Review-Fenster.
+Lokaler PDF-Archivierungsassistent für Windows. Das Programm erkennt Barcodes, liest Text per PDF-Extraktion oder OCR, klassifiziert Dokumente mit einem lokalen Ollama-Modell und speichert die Analyse als JSON-Sidecar. Danach kann die Post-Processing-Stufe diese Metadaten prüfen, PDF-Metadaten schreiben und das Dokument final archivieren.
 
-Der aktuelle Standardprozess ist bewusst halbautomatisch: Die Software schlägt Datum, Barcode, Kategorie und Dateiname vor, der Benutzer bestätigt oder korrigiert die Werte, erst danach wird das Dokument final archiviert.
+Der aktuelle Standardprozess ist bewusst halbautomatisch: Die Software schlägt Datum, Archivcode, Barcode, Dokumenttyp, Kategorie und Dateiname vor, der Benutzer bestätigt oder korrigiert die Werte, erst danach wird das Dokument final archiviert.
+
+Die Architektur braucht keine Datenbank. Der wichtigste Vertrag zwischen Analyse, Review und Post-Processing ist eine Datei neben dem PDF:
+
+```text
+Dokument.pdf
+Dokument.pdf.json
+```
 
 ## Kundenstart
 
@@ -16,7 +23,7 @@ Nach dem Herunterladen oder Klonen des Projektordners:
 
 `Start.cmd` macht immer beides:
 
-1. neue PDFs aus `Input` analysieren und in die Review-Warteschlange legen;
+1. neue PDFs aus `Input` analysieren und als PDF+JSON-Sidecar-Paare in die Review-Warteschlange legen;
 2. direkt danach das Review-Fenster öffnen.
 
 ## Installation
@@ -54,6 +61,20 @@ PDF-Dateien werden in diesen Ordner gelegt:
 Input/
 ```
 
+Optional können Dokumente nach Herkunft getrennt werden:
+
+```text
+Input/
+  Paper/
+    scan_mit_barcode.pdf
+  Digital/
+    digitale_rechnung.pdf
+```
+
+- `Input/Paper`: Papierdokumente mit physischem Original. Der Code128-Barcode oben rechts ist Pflicht und wird als `ArchiveCode` verwendet.
+- `Input/Digital`: rein digitale Dokumente. Ein Barcode ist nicht nötig; die Software vergibt automatisch einen Code wie `D-2026-000001`.
+- Direkt in `Input`: automatische Erkennung. Mit Barcode wird das Dokument als `paper_scan` behandelt, ohne Barcode als `digital`.
+
 Danach:
 
 ```text
@@ -64,6 +85,8 @@ Im Fenster werden pro Dokument angezeigt:
 
 - Dokumentdatum;
 - Barcode;
+- Archivcode;
+- Dokumenttyp;
 - Kategorie;
 - neue Kategorie, falls keine bestehende Kategorie passt;
 - Absender;
@@ -76,10 +99,10 @@ Alle Felder können manuell geändert werden. Nach `Übernehmen` passiert die fi
 
 - PDF-Dateiname wird neu gebildet;
 - PDF-Metadaten werden geschrieben;
-- JSON-Sidecar wird erstellt;
-- XML-Sidecar wird erstellt, wenn `create_xml: true` gesetzt ist;
+- finaler JSON-Sidecar `*.pdf.json` wird neben dem PDF erstellt;
+- finaler XML-Sidecar `*.pdf.xml` wird erstellt, wenn `create_xml: true` gesetzt ist;
 - PDF wird nach `Archive/JAHR/Kategorie` verschoben;
-- Queue-Eintrag wird als bestätigt markiert.
+- der Review-Sidecar wird als erledigte JSON-Auditkopie unter `Archive/_Queue/completed` abgelegt.
 
 ## Ordnerstruktur
 
@@ -90,20 +113,28 @@ pdf-archive/
   Install.cmd
   Start.cmd
   Input/
-    scan_001.pdf
+    Paper/
+      scan_001.pdf
+    Digital/
+      invoice_email.pdf
   Archive/
+    _archive_code_counters.json
     _Queue/
-      review_queue.sqlite3
       pending/
-      drafts/
+        scan_001_9f3a1c2b.pdf
+        scan_001_9f3a1c2b.pdf.json
+      completed/
+        9f3a1c2b-....json
     2026/
       Rechnung/
-        2026-06-24_Rechnung_Stadtwerke_Rechnung_1234567890.pdf
-        2026-06-24_Rechnung_Stadtwerke_Rechnung_1234567890.json
-        2026-06-24_Rechnung_Stadtwerke_Rechnung_1234567890.xml
+        2026-06-24_Rechnung_Stadtwerke_Rechnung_P-2026-000123.pdf
+        2026-06-24_Rechnung_Stadtwerke_Rechnung_P-2026-000123.pdf.json
+        2026-06-24_Rechnung_Stadtwerke_Rechnung_P-2026-000123.pdf.xml
 ```
 
-`Archive/_Queue` ist die interne Warteschlange für noch nicht bestätigte Dokumente.
+`Archive/_Queue/pending` enthält noch nicht bestätigte Dokumente als echte PDF+JSON-Paare. Das JSON ist die Analyseausgabe und kann auch von anderen Programmen gelesen oder verändert werden. Beim Bestätigen liest das Post-Processing dieses JSON, schreibt die endgültigen Dateien in den Archivordner und legt eine erledigte Auditkopie unter `Archive/_Queue/completed` ab.
+
+Die alte SQLite-Warteschlange wird nicht mehr verwendet. Falls aus einer früheren Version noch `Archive/_Queue/review_queue.sqlite3` existiert, werden pending Einträge beim nächsten Start automatisch in JSON-Sidecars migriert.
 
 ## Lokale KI
 
@@ -154,6 +185,31 @@ barcode:
 
 Wenn Barcodes nicht zuverlässig erkannt werden, sollte dieser Bereich an das echte Scanlayout angepasst werden.
 
+## Archivcode
+
+Der `ArchiveCode` ist die gemeinsame Suchnummer für Papier und digitale Dokumente.
+
+- Für Papierdokumente ist der gelesene Barcode der `ArchiveCode`, zum Beispiel `P-2026-000123`.
+- Für digitale Dokumente ohne Barcode vergibt die Software automatisch eine laufende Nummer, zum Beispiel `D-2026-000001`.
+- Der `ArchiveCode` wird in Dateiname, JSON, XML und PDF-Metadaten geschrieben.
+
+Die Einstellungen stehen in `config.example.yml`:
+
+```yaml
+archive_code:
+  enabled: true
+  paper_prefix: P
+  digital_prefix: D
+  number_width: 6
+  counter_file: _archive_code_counters.json
+  default_source_type: auto
+  paper_input_folder: Paper
+  digital_input_folder: Digital
+  require_barcode_for_paper: true
+```
+
+Damit kann ein Papierdokument später über den Barcode in der physischen Mappe gefunden werden. Umgekehrt kann der Barcode vom Papierdokument als Suchbegriff im digitalen Archiv verwendet werden. Digitale Dokumente ohne Papieroriginal bleiben über ihren `D-*`-Archivcode auffindbar.
+
 ## Kategorien
 
 Die festen Kategorien stehen in `config.example.yml` im Abschnitt `categories`. Das Modell soll möglichst eine feste Kategorie wählen. Wenn keine Kategorie passt, darf eine neue Kategorie vorgeschlagen werden; diese wird im Review-Fenster angezeigt und kann vom Benutzer bestätigt oder geändert werden.
@@ -163,7 +219,10 @@ Die festen Kategorien stehen in `config.example.yml` im Abschnitt `categories`. 
 Beim finalen Speichern werden unter anderem diese PDF-Metadaten geschrieben:
 
 - `Barcode`
+- `ArchiveCode`
 - `ArchiveId`
+- `ArchiveSourceType`
+- `ArchivePhysicalDocument`
 - `DocumentDate`
 - `DocumentCategory`
 - `DocumentCategoryName`
@@ -171,6 +230,30 @@ Beim finalen Speichern werden unter anderem diese PDF-Metadaten geschrieben:
 - `ArchiveReviewApproved`
 - `ArchiveReviewApprovedAt`
 - `ArchiveProcessedAt`
+
+Die gleichen Werte stehen zusätzlich im JSON-Sidecar. Dadurch kann eine andere Anwendung die JSON-Datei lesen, eigene PDF-Eigenschaften schreiben, andere Umbenennungsregeln anwenden oder eine spätere KI-Version austauschen, ohne den Rest des Workflows neu zu bauen.
+
+## CLI-Stufen
+
+Analyse ohne finale Archivierung:
+
+```powershell
+python archive_pdf.py --analyze-only
+```
+
+Das ist identisch zu `--queue-review` und erzeugt in `Archive/_Queue/pending` PDF+JSON-Paare.
+
+Review-Liste als JSON:
+
+```powershell
+python archive_pdf.py --list-review-queue --json
+```
+
+Post-Processing eines bestätigten Dokuments:
+
+```powershell
+python archive_pdf.py --approve-review <ID> --review-date 2026-06-24 --review-category-id invoice
+```
 
 Zusätzlich entstehen strukturierte `.json`- und optional `.xml`-Dateien.
 
@@ -215,6 +298,7 @@ Für den ersten Test keine echten Kundendokumente verwenden. Geeignet sind synth
 - Rechnung mit Barcode;
 - Kontoauszug mit Barcode;
 - Arzt- oder Laborbericht mit Barcode;
+- digitale Rechnung ohne Barcode;
 - unklarer Brief ohne Barcode.
 
 Erwartung: `Start.cmd` legt alle Dokumente in die Review-Warteschlange, öffnet das Fenster und speichert bestätigte Dokumente final unter `Archive/JAHR/Kategorie`.
