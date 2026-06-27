@@ -6,7 +6,7 @@ settings:
   unknown_year_folder: UnknownYear
   create_xml: true
   include_extracted_text: false
-  recursive_input: false
+  recursive_input: true
   delete_source_after_success: true
   confidence_review_threshold: 0.75
   min_text_chars_before_ocr: 80
@@ -48,104 +48,119 @@ llm:
   timeout_seconds: 180
   allow_ai_categories: true
 
+archive_code:
+  enabled: true
+  # Paper scans use the decoded barcode as ArchiveCode.
+  # Digital-only PDFs without barcode receive a generated code like D-2026-000001.
+  paper_prefix: P
+  digital_prefix: D
+  number_width: 6
+  counter_file: _archive_code_counters.json
+  # auto: barcode present -> paper_scan; no barcode -> digital.
+  # For explicit workflows, put files into Input/Paper or Input/Digital.
+  default_source_type: auto
+  paper_input_folder: Paper
+  digital_input_folder: Digital
+  require_barcode_for_paper: true
+
 categories:
   - id: invoice
-    name: Rechnung / Счета
+    name: Rechnung
     folder: Rechnung
     description: Invoices, payment requests, bills, receipts with payment obligation.
     keywords: [rechnung, invoice, zahlbetrag, faellig, mwst, ust, betrag]
   - id: bank_statement
-    name: Kontoauszug / Банковские выписки
+    name: Kontoauszug
     folder: Kontoauszug
     description: Bank statements, account movements, credit card statements.
     keywords: [kontoauszug, kontostand, iban, bic, umsatz, bank]
   - id: tax
-    name: Steuer / Налоги
+    name: Steuer
     folder: Steuer
     description: Tax office, tax returns, tax notices, VAT and income tax documents.
     keywords: [steuer, finanzamt, einkommensteuer, umsatzsteuer, bescheid]
   - id: insurance
-    name: Versicherung / Страхование
+    name: Versicherung
     folder: Versicherung
     description: Insurance policies, claims, premium notices.
     keywords: [versicherung, police, beitrag, schaden, haftpflicht]
   - id: salary
-    name: Gehalt / Зарплата
+    name: Gehalt
     folder: Gehalt
     description: Payslips and salary related documents.
     keywords: [gehalt, lohn, abrechnung, entgelt, brutto, netto]
   - id: pension
-    name: Rente / Пенсия
+    name: Rente
     folder: Rente
     description: Pension and retirement documents.
     keywords: [rente, rentenversicherung, pension]
   - id: real_estate
-    name: Immobilien / Недвижимость
+    name: Immobilien
     folder: Immobilien
     description: Rent, property, lease, ownership and housing documents.
     keywords: [miete, mietvertrag, immobilie, grundsteuer, wohnung]
   - id: health_insurance
-    name: Krankenkasse / Медицинская страховка
+    name: Krankenkasse
     folder: Krankenkasse
     description: Health insurance letters and statements.
     keywords: [krankenkasse, krankenversicherung, versichertenkarte]
   - id: medical
-    name: Arzt / Медицина
+    name: Arzt
     folder: Arzt
     description: Doctor letters, lab reports, prescriptions, medical invoices.
     keywords: [arzt, praxis, diagnose, labor, rezept, behandlung]
   - id: government
-    name: Behoerde / Госорганы
+    name: Behoerde
     folder: Behoerde
     description: Government authorities, municipalities, official notices.
     keywords: [behoerde, amt, stadt, gemeinde, bescheid, antrag]
   - id: legal
-    name: Gericht_Anwalt / Суд и адвокат
+    name: Gericht_Anwalt
     folder: Gericht_Anwalt
     description: Court, lawyer, legal disputes and legal notices.
     keywords: [gericht, anwalt, kanzlei, klage, frist, aktenzeichen]
   - id: contract
-    name: Vertrag / Договоры
+    name: Vertrag
     folder: Vertrag
     description: Contracts, agreements, subscriptions.
     keywords: [vertrag, vereinbarung, kuendigung, laufzeit, agb]
   - id: car
-    name: Auto / Автомобиль
+    name: Auto
     folder: Auto
     description: Vehicle, repair, registration, insurance and leasing.
     keywords: [auto, fahrzeug, kfz, werkstatt, reifen, leasing]
   - id: energy
-    name: Energie / Электричество, газ, вода
+    name: Energie
     folder: Energie
     description: Electricity, gas, water, utilities and municipal services.
     keywords: [strom, gas, wasser, energie, stadtwerke, zaehler]
   - id: telecom
-    name: Telekom / Интернет и телефон
+    name: Telekom
     folder: Telekom
     description: Internet, mobile, phone and communication providers.
     keywords: [telefon, internet, mobilfunk, telekom, vodafone, o2]
   - id: shopping
-    name: Bestellung_Lieferung / Покупки и доставка
+    name: Bestellung_Lieferung
     folder: Bestellung_Lieferung
     description: Orders, delivery notes, returns, online purchases.
     keywords: [bestellung, lieferung, retour, amazon, ebay, paket]
   - id: warranty
-    name: Garantie / Гарантия
+    name: Garantie
     folder: Garantie
     description: Warranty, repair proof, product guarantee.
     keywords: [garantie, gewaehrleistung, reparatur, seriennummer]
   - id: travel
-    name: Reise / Путешествия
+    name: Reise
     folder: Reise
     description: Travel bookings, hotels, flights, tickets.
     keywords: [reise, hotel, flug, ticket, buchung, boarding]
   - id: education
-    name: Bildung / Образование
+    name: Bildung
     folder: Bildung
     description: School, university, courses, certificates.
     keywords: [schule, universitaet, kurs, zertifikat, bescheinigung]
   - id: other
-    name: Sonstiges / Прочее
+    name: Sonstiges
     folder: Sonstiges
     description: Documents that do not fit another fixed category.
     keywords: [sonstiges, allgemein]

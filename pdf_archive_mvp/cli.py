@@ -24,19 +24,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--queue-review",
         action="store_true",
-        help="Analyze PDFs and put drafts into the manual review queue instead of final archiving.",
+        help="Analyze PDFs and write JSON sidecars into the manual review queue instead of final archiving.",
+    )
+    parser.add_argument(
+        "--analyze-only",
+        action="store_true",
+        help="Alias for --queue-review: run analysis and create PDF+JSON sidecar pairs for later post-processing.",
     )
     parser.add_argument("--list-review-queue", action="store_true", help="Print pending manual review queue items.")
     parser.add_argument("--include-completed-review", action="store_true", help="Include approved items in queue output.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for queue commands.")
     parser.add_argument("--approve-review", metavar="ID", help="Approve one manual review queue item by ID.")
-    parser.add_argument("--review-date", help="Manual document date in YYYY-MM-DD format.")
-    parser.add_argument("--review-category-id", help="Manual category id, or a custom category id/name.")
-    parser.add_argument("--review-category-name", help="Manual category display name for custom categories.")
-    parser.add_argument("--review-barcode", help="Manual barcode value.")
-    parser.add_argument("--review-sender", help="Manual sender/organization.")
-    parser.add_argument("--review-title", help="Manual document title.")
-    parser.add_argument("--review-filename-title", help="Manual short title used in the final file name.")
+    parser.add_argument("--review-date", nargs="?", const="", help="Manual document date in YYYY-MM-DD format.")
+    parser.add_argument("--review-category-id", nargs="?", const="", help="Manual category id, or a custom category id/name.")
+    parser.add_argument("--review-category-name", nargs="?", const="", help="Manual category display name for custom categories.")
+    parser.add_argument("--review-barcode", nargs="?", const="", help="Manual barcode value.")
+    parser.add_argument("--review-archive-code", nargs="?", const="", help="Manual archive code, e.g. P-2026-000123 or D-2026-000124.")
+    parser.add_argument("--review-source-type", nargs="?", const="", choices=["paper_scan", "digital", "unknown"], help="Manual source type.")
+    parser.add_argument("--review-sender", nargs="?", const="", help="Manual sender/organization.")
+    parser.add_argument("--review-title", nargs="?", const="", help="Manual document title.")
+    parser.add_argument("--review-filename-title", nargs="?", const="", help="Manual short title used in the final file name.")
     parser.add_argument(
         "--review-gui",
         action="store_true",
@@ -46,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -76,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
                 "category_id": args.review_category_id,
                 "category_name": args.review_category_name,
                 "barcode": args.review_barcode,
+                "archive_code": args.review_archive_code,
+                "source_type": args.review_source_type,
                 "sender": args.review_sender,
                 "title": args.review_title,
                 "short_filename_title": args.review_filename_title,
@@ -92,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
 
     configure_logging(config.archive_dir)
 
-    results = process_directory(config, dry_run=args.dry_run, no_llm=args.no_llm, queue_review=args.queue_review)
+    queue_review = args.queue_review or args.analyze_only
+    results = process_directory(config, dry_run=args.dry_run, no_llm=args.no_llm, queue_review=queue_review)
     if not results:
         print(f"No PDF files found in {config.input_dir}")
         return 0
@@ -129,3 +140,11 @@ def start_review_gui(config_path: Path) -> int:
         sys.executable,
     ]
     return subprocess.call(command)
+
+
+def configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass

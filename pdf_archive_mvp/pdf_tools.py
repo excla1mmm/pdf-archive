@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import re
+import os
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +113,8 @@ def extract_text(pdf_path: Path, min_chars_before_ocr: int, max_pages: int, ocr:
         warnings.append("pytesseract is not installed; OCR skipped.")
         return direct_text, {"method": "pdf_text", "pages": len(pages_text), "ocr_used": False}, warnings
 
+    configure_tesseract_runtime(pytesseract)
+
     ocr_text: list[str] = []
     ocr_pages: list[dict[str, Any]] = []
     try:
@@ -140,6 +143,30 @@ def extract_text(pdf_path: Path, min_chars_before_ocr: int, max_pages: int, ocr:
         "tesseract_config": ocr.tesseract_config,
         "ocr_pages": ocr_pages,
     }, warnings
+
+
+def configure_tesseract_runtime(pytesseract: Any) -> None:
+    if shutil.which("tesseract"):
+        return
+
+    for candidate in _tesseract_candidates():
+        if candidate.exists():
+            pytesseract.pytesseract.tesseract_cmd = str(candidate)
+            tessdata = candidate.parent / "tessdata"
+            if tessdata.exists():
+                os.environ.setdefault("TESSDATA_PREFIX", str(tessdata))
+            return
+
+
+def _tesseract_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+        root = os.environ.get(env_name)
+        if root:
+            candidates.append(Path(root) / "Tesseract-OCR" / "tesseract.exe")
+    candidates.append(Path("C:/Program Files/Tesseract-OCR/tesseract.exe"))
+    candidates.append(Path("C:/Program Files (x86)/Tesseract-OCR/tesseract.exe"))
+    return candidates
 
 
 def prepare_ocr_image(image: Any, ocr: OcrConfig, pytesseract: Any) -> tuple[Any, dict[str, Any]]:

@@ -51,6 +51,8 @@ def build_review_reasons(
     classification: dict[str, Any],
     document_date: str | None,
     primary_barcode: str,
+    archive_code: str,
+    source_type: str,
     date_validation: dict[str, Any],
     has_enough_text_for_llm: bool,
 ) -> list[str]:
@@ -61,8 +63,10 @@ def build_review_reasons(
         reasons.append("missing_or_unverified_date")
     if date_validation.get("warnings"):
         reasons.append("date_validation_warning")
-    if not primary_barcode:
+    if source_type == "paper_scan" and config.archive_code.require_barcode_for_paper and not primary_barcode:
         reasons.append("missing_barcode")
+    if not archive_code:
+        reasons.append("missing_archive_code")
     if classification["category_source"] == "ai_created":
         reasons.append("ai_created_category")
     if not has_enough_text_for_llm:

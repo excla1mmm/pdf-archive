@@ -51,6 +51,19 @@ class LlmConfig:
 
 
 @dataclass(frozen=True)
+class ArchiveCodeConfig:
+    enabled: bool
+    paper_prefix: str
+    digital_prefix: str
+    number_width: int
+    counter_file: Path
+    default_source_type: str
+    paper_input_folder: str
+    digital_input_folder: str
+    require_barcode_for_paper: bool
+
+
+@dataclass(frozen=True)
 class AppConfig:
     config_path: Path
     input_dir: Path
@@ -72,6 +85,7 @@ class AppConfig:
     barcode: BarcodeConfig
     ocr: OcrConfig
     llm: LlmConfig
+    archive_code: ArchiveCodeConfig
     categories: list[Category]
 
     @property
@@ -107,6 +121,7 @@ def load_config(path: str | Path, input_override: str | None = None, archive_ove
     barcode = _require_mapping(raw.get("barcode", {}), "barcode")
     ocr = _require_mapping(raw.get("ocr", {}), "ocr")
     llm = _require_mapping(raw.get("llm", {}), "llm")
+    archive_code = _require_mapping(raw.get("archive_code", {}), "archive_code")
 
     base_dir = config_path.parent
     input_dir = _resolve_path(input_override or settings.get("input_dir", "Input"), base_dir)
@@ -172,6 +187,17 @@ def load_config(path: str | Path, input_override: str | None = None, archive_ove
             temperature=float(llm.get("temperature", 0.1)),
             timeout_seconds=int(llm.get("timeout_seconds", 180)),
             allow_ai_categories=bool(llm.get("allow_ai_categories", True)),
+        ),
+        archive_code=ArchiveCodeConfig(
+            enabled=bool(archive_code.get("enabled", True)),
+            paper_prefix=str(archive_code.get("paper_prefix", "P")),
+            digital_prefix=str(archive_code.get("digital_prefix", "D")),
+            number_width=int(archive_code.get("number_width", 6)),
+            counter_file=_resolve_path(archive_code.get("counter_file", "_archive_code_counters.json"), archive_dir),
+            default_source_type=str(archive_code.get("default_source_type", "auto")).strip().lower(),
+            paper_input_folder=str(archive_code.get("paper_input_folder", "Paper")),
+            digital_input_folder=str(archive_code.get("digital_input_folder", "Digital")),
+            require_barcode_for_paper=bool(archive_code.get("require_barcode_for_paper", True)),
         ),
         categories=categories,
     )

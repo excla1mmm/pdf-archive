@@ -32,9 +32,49 @@ function Refresh-Path {
     $env:Path = "$machinePath;$userPath"
 }
 
+function Test-ForeignUserProfilePath {
+    param([string]$Path)
+
+    if (-not $Path) {
+        return $false
+    }
+
+    try {
+        $resolved = [System.IO.Path]::GetFullPath($Path)
+        $usersRoot = [System.IO.Path]::GetFullPath((Join-Path $env:SystemDrive "Users"))
+        $currentProfile = [System.IO.Path]::GetFullPath($env:USERPROFILE)
+        $comparison = [System.StringComparison]::OrdinalIgnoreCase
+
+        $underUsers = $resolved.StartsWith("$usersRoot\", $comparison)
+        $underCurrentProfile = $resolved.Equals($currentProfile, $comparison) -or $resolved.StartsWith("$currentProfile\", $comparison)
+        $underPublicProfile = $resolved.StartsWith("$usersRoot\Public\", $comparison)
+        return $underUsers -and (-not $underCurrentProfile) -and (-not $underPublicProfile)
+    } catch {
+        return $false
+    }
+}
+
+function Get-UsableCommand {
+    param([string]$Name)
+
+    $commands = @(Get-Command $Name -All -ErrorAction SilentlyContinue)
+    foreach ($command in $commands) {
+        $source = [string]$command.Source
+        if (-not $source) {
+            continue
+        }
+        if (Test-ForeignUserProfilePath $source) {
+            Write-Warn "Ignoring $Name from another Windows user profile: $source"
+            continue
+        }
+        return $command
+    }
+    return $null
+}
+
 function Test-CommandAvailable {
     param([string]$Name)
-    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+    return $null -ne (Get-UsableCommand $Name)
 }
 
 function Invoke-Native {
@@ -52,10 +92,18 @@ function Invoke-Native {
 function Invoke-Ollama {
     param([string[]]$Arguments)
 
+    $command = Get-UsableCommand "ollama"
+    if (-not $command) {
+        return @{
+            ExitCode = 1
+            Output = "ollama command was not found."
+        }
+    }
+
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $output = & ollama @Arguments 2>&1
+        $output = & $command.Source @Arguments 2>&1
         $exitCode = $LASTEXITCODE
         return @{
             ExitCode = $exitCode
@@ -94,7 +142,8 @@ function Install-WingetPackage {
         Write-Warn "Skipping winget install for $DisplayName."
         return $false
     }
-    if (-not (Test-CommandAvailable "winget")) {
+    $winget = Get-UsableCommand "winget"
+    if (-not $winget) {
         Write-Warn "winget is not available. Install $DisplayName manually."
         return $false
     }
@@ -104,8 +153,17 @@ function Install-WingetPackage {
     if ($Architecture) {
         $wingetArgs += @("--architecture", $Architecture)
     }
-    & winget @wingetArgs
-    if ($LASTEXITCODE -ne 0) {
+    $output = & $winget.Source @wingetArgs 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        if ($output) {
+            $lines = @($output | ForEach-Object { $_.ToString() } | Where-Object { $_.Trim() } | Select-Object -First 12)
+            if ($lines) {
+                Write-Warn "winget output:"
+                $lines | ForEach-Object { Write-Host "  $_" }
+            }
+        }
+        Write-Warn "winget exit code for $DisplayName was $exitCode."
         Write-Warn "winget could not install $DisplayName. Continue with manual installation if needed."
         Refresh-Path
         return $false
@@ -137,6 +195,11 @@ function Get-PythonMachine {
 function Test-PythonSupported {
     param([string]$Python)
 
+    if (Test-ForeignUserProfilePath $Python) {
+        Write-Warn "Ignoring Python from another Windows user profile: $Python"
+        return $false
+    }
+
     $machine = Get-PythonMachine -Python $Python
     if (-not $machine) {
         Write-Warn "Could not determine Python CPU architecture: $Python"
@@ -154,6 +217,30 @@ function Test-PythonSupported {
     return $true
 }
 
+function Test-VenvSupported {
+    param([string]$VenvPython)
+
+    if (-not (Test-Path $VenvPython)) {
+        return $false
+    }
+
+    $venvRoot = Split-Path (Split-Path $VenvPython -Parent) -Parent
+    $venvConfig = Join-Path $venvRoot "pyvenv.cfg"
+    if (Test-Path $venvConfig) {
+        foreach ($line in Get-Content $venvConfig) {
+            if ($line -match "^(home|executable)\s*=\s*(.+)$") {
+                $basePath = $Matches[2].Trim()
+                if (Test-ForeignUserProfilePath $basePath) {
+                    Write-Warn "Existing .venv is based on Python from another Windows user profile: $basePath"
+                    return $false
+                }
+            }
+        }
+    }
+
+    return Test-PythonSupported -Python $VenvPython
+}
+
 function Get-PythonExecutable {
     $checks = @(
         @{ File = "py"; Args = @("-3.12-64", "-c", "import sys; print(sys.executable)") },
@@ -165,12 +252,13 @@ function Get-PythonExecutable {
     )
 
     foreach ($check in $checks) {
-        if (-not (Test-CommandAvailable $check.File)) {
+        $command = Get-UsableCommand $check.File
+        if (-not $command) {
             continue
         }
 
         try {
-            $output = & $check.File @($check.Args) 2>$null
+            $output = & $command.Source @($check.Args) 2>$null
             if ($LASTEXITCODE -eq 0 -and $output) {
                 $candidate = [string]($output | Select-Object -Last 1)
                 $candidate = $candidate.Trim()
@@ -257,26 +345,88 @@ function Add-UserPathIfMissing {
     Refresh-Path
 }
 
+function Get-TesseractExecutable {
+    $command = Get-UsableCommand "tesseract"
+    if ($command) {
+        return [string]$command.Source
+    }
+
+    $candidates = @(
+        "C:\Program Files\Tesseract-OCR\tesseract.exe",
+        "C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+    return ""
+}
+
+function Ensure-TesseractLanguage {
+    param(
+        [string]$TessdataDir,
+        [string]$Language
+    )
+
+    if (-not $TessdataDir) {
+        return $false
+    }
+
+    New-Item -ItemType Directory -Force -Path $TessdataDir | Out-Null
+    $target = Join-Path $TessdataDir "$Language.traineddata"
+    if (Test-Path $target) {
+        return $true
+    }
+
+    $url = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/$Language.traineddata"
+    Write-Host "Downloading Tesseract language data: $Language"
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $target -UseBasicParsing
+        return (Test-Path $target)
+    } catch {
+        Write-Warn "Could not download Tesseract language '$Language': $($_.Exception.Message)"
+        Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+}
+
 function Ensure-Tesseract {
     Write-Step "Checking Tesseract OCR"
-    if (-not (Test-CommandAvailable "tesseract")) {
-        Install-WingetPackage -PackageId "UB-Mannheim.TesseractOCR" -DisplayName "Tesseract OCR" | Out-Null
+    $tesseractPath = Get-TesseractExecutable
+    if (-not $tesseractPath) {
+        $installed = Install-WingetPackage -PackageId "UB-Mannheim.TesseractOCR" -DisplayName "Tesseract OCR"
+        if (-not $installed) {
+            Write-Warn "Trying alternate winget package id for Tesseract OCR."
+            Install-WingetPackage -PackageId "tesseract-ocr.tesseract" -DisplayName "Tesseract OCR" | Out-Null
+        }
     }
 
     Add-UserPathIfMissing "C:\Program Files\Tesseract-OCR"
+    Add-UserPathIfMissing "C:\Program Files (x86)\Tesseract-OCR"
 
-    if (-not (Test-CommandAvailable "tesseract")) {
+    $tesseractPath = Get-TesseractExecutable
+    if (-not $tesseractPath) {
         Write-Warn "Tesseract was not found. OCR for scanned PDFs will not work until it is installed."
         Write-Host "Manual installer: https://github.com/UB-Mannheim/tesseract/wiki"
+        Write-Host "After installing manually, reopen PowerShell or add the Tesseract folder to PATH."
         return
     }
 
-    $version = (& tesseract --version 2>$null | Select-Object -First 1)
+    $version = (& $tesseractPath --version 2>$null | Select-Object -First 1)
     Write-Ok "Tesseract found: $version"
 
-    $langs = (& tesseract --list-langs 2>$null)
+    $tessdataDir = Join-Path (Split-Path $tesseractPath -Parent) "tessdata"
+    Ensure-TesseractLanguage -TessdataDir $tessdataDir -Language "eng" | Out-Null
+    Ensure-TesseractLanguage -TessdataDir $tessdataDir -Language "deu" | Out-Null
+
+    $langs = (& $tesseractPath --list-langs 2>$null)
     if (($langs -notcontains "deu") -or ($langs -notcontains "eng")) {
         Write-Warn "Tesseract languages 'deu' and/or 'eng' were not detected. German/English OCR may be incomplete."
+        Write-Host "Tessdata folder: $tessdataDir"
+        Write-Host "Expected files: deu.traineddata and eng.traineddata"
+    } else {
+        Write-Ok "Tesseract languages detected: deu, eng"
     }
 }
 
@@ -340,8 +490,8 @@ function Ensure-Venv {
 
     Write-Step "Creating Python virtual environment"
     $venvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
-    if ((Test-Path $venvPython) -and (-not (Test-PythonSupported -Python $venvPython))) {
-        Write-Warn "Existing .venv uses an unsupported Python architecture. Recreating .venv."
+    if ((Test-Path $venvPython) -and (-not (Test-VenvSupported -VenvPython $venvPython))) {
+        Write-Warn "Existing .venv uses an unsupported or foreign Python. Recreating .venv."
         Remove-Item -Recurse -Force (Join-Path $ProjectRoot ".venv")
     }
 
@@ -363,6 +513,8 @@ function Ensure-Folders {
     New-Item -ItemType Directory -Force -Path (Join-Path $ProjectRoot "Archive") | Out-Null
     Write-Ok "Input and Archive folders are ready."
 }
+
+Refresh-Path
 
 Write-Host "PDF Archive MVP Windows setup" -ForegroundColor Cyan
 Write-Host "Project: $ProjectRoot"

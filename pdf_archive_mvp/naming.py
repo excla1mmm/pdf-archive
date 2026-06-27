@@ -58,7 +58,7 @@ def build_filename(
     document_date: str | None,
     category_folder: str,
     classification: dict[str, Any],
-    barcode: str,
+    archive_code: str,
 ) -> str:
     date_part = document_date or "undated"
     parts = [
@@ -67,8 +67,8 @@ def build_filename(
         safe_filename_part(classification.get("sender"), fallback="", max_length=40),
         safe_filename_part(classification.get("short_filename_title"), fallback="Dokument", max_length=60),
     ]
-    if barcode:
-        parts.append(safe_filename_part(barcode, fallback="", max_length=40))
+    if archive_code:
+        parts.append(safe_filename_part(archive_code, fallback="", max_length=40))
 
     cleaned = [part for part in parts if part]
     filename = "_".join(cleaned)
